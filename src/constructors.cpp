@@ -12,10 +12,44 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "./csg_tree.h"
-#include "./impl.h"
-#include "./parallel.h"
+#include "csg_tree.h"
+#include "disjoint_sets.h"
+#include "impl.h"
+#include "manifold/manifold.h"
 #include "manifold/polygon.h"
+#include "parallel.h"
+
+namespace {
+using namespace manifold;
+
+template <typename P, typename I>
+std::shared_ptr<Manifold::Impl> SmoothImpl(
+    const MeshGLP<P, I>& meshGL,
+    const std::vector<Smoothness>& sharpenedEdges) {
+  DEBUG_ASSERT(meshGL.halfedgeTangent.empty(), std::runtime_error,
+               "when supplying tangents, the normal constructor should be used "
+               "rather than Smooth().");
+
+  MeshGLP<P, I> meshTmp = meshGL;
+  meshTmp.faceID.resize(meshGL.NumTri());
+  std::iota(meshTmp.faceID.begin(), meshTmp.faceID.end(), 0);
+
+  std::shared_ptr<Manifold::Impl> impl =
+      std::make_shared<Manifold::Impl>(meshTmp);
+  impl->CreateTangents(impl->UpdateSharpenedEdges(sharpenedEdges));
+  // Restore the original faceID
+  const size_t numTri = impl->NumTri();
+  for (size_t i = 0; i < numTri; ++i) {
+    if (meshGL.faceID.size() == numTri) {
+      impl->meshRelation_.triRef[i].faceID =
+          meshGL.faceID[impl->meshRelation_.triRef[i].faceID];
+    } else {
+      impl->meshRelation_.triRef[i].faceID = -1;
+    }
+  }
+  return impl;
+}
+}  // namespace
 
 namespace manifold {
 /**
@@ -48,13 +82,7 @@ namespace manifold {
  */
 Manifold Manifold::Smooth(const MeshGL& meshGL,
                           const std::vector<Smoothness>& sharpenedEdges) {
-  DEBUG_ASSERT(meshGL.halfedgeTangent.empty(), std::runtime_error,
-               "when supplying tangents, the normal constructor should be used "
-               "rather than Smooth().");
-
-  std::shared_ptr<Impl> impl = std::make_shared<Impl>(meshGL);
-  impl->CreateTangents(impl->UpdateSharpenedEdges(sharpenedEdges));
-  return Manifold(impl);
+  return Manifold(SmoothImpl(meshGL, sharpenedEdges));
 }
 
 /**
@@ -87,13 +115,7 @@ Manifold Manifold::Smooth(const MeshGL& meshGL,
  */
 Manifold Manifold::Smooth(const MeshGL64& meshGL64,
                           const std::vector<Smoothness>& sharpenedEdges) {
-  DEBUG_ASSERT(meshGL64.halfedgeTangent.empty(), std::runtime_error,
-               "when supplying tangents, the normal constructor should be used "
-               "rather than Smooth().");
-
-  std::shared_ptr<Impl> impl = std::make_shared<Impl>(meshGL64);
-  impl->CreateTangents(impl->UpdateSharpenedEdges(sharpenedEdges));
-  return Manifold(impl);
+  return Manifold(SmoothImpl(meshGL64, sharpenedEdges));
 }
 
 /**
@@ -126,7 +148,8 @@ Manifold Manifold::Cube(vec3 size, bool center) {
  * form cones if both radii are specified.
  *
  * @param height Z-extent
- * @param radiusLow Radius of bottom circle. Must be positive.
+ * @param radiusLow Radius of bottom circle. Must be non-negative. If zero,
+ * radiusHigh must be positive and a cone with apex at the bottom is created.
  * @param radiusHigh Radius of top circle. Can equal zero. Default is equal to
  * radiusLow.
  * @param circularSegments How many line segments to use around the circle.
@@ -136,8 +159,19 @@ Manifold Manifold::Cube(vec3 size, bool center) {
  */
 Manifold Manifold::Cylinder(double height, double radiusLow, double radiusHigh,
                             int circularSegments, bool center) {
-  if (height <= 0.0 || radiusLow <= 0.0) {
+  if (height <= 0.0 || radiusLow < 0.0) {
     return Invalid();
+  }
+  if (radiusLow == 0.0) {
+    if (radiusHigh <= 0.0) {
+      return Invalid();
+    }
+    // Cone with apex at bottom: create the centered apex-at-top version and
+    // mirror it
+    Manifold cone = Cylinder(height, radiusHigh, 0.0, circularSegments, true);
+    cone = cone.Mirror(vec3(0.0, 0.0, 1.0));
+    if (!center) cone = cone.Translate(vec3(0.0, 0.0, height / 2.0));
+    return cone.AsOriginal();
   }
   const double scale = radiusHigh >= 0.0 ? radiusHigh / radiusLow : 1.0;
   const double radius = fmax(radiusLow, radiusHigh);
@@ -173,17 +207,19 @@ Manifold Manifold::Sphere(double radius, int circularSegments) {
   int n = circularSegments > 0 ? (circularSegments + 3) / 4
                                : Quality::GetCircularSegments(radius) / 4;
   auto pImpl_ = std::make_shared<Impl>(Impl::Shape::Octahedron);
-  pImpl_->Subdivide(
-      [n](vec3 edge, vec4 tangentStart, vec4 tangentEnd) { return n - 1; });
+  pImpl_->Subdivide([n](vec3, vec4, vec4) { return n - 1; });
   for_each_n(autoPolicy(pImpl_->NumVert(), 1e5), pImpl_->vertPos_.begin(),
              pImpl_->NumVert(), [radius](vec3& v) {
                v = la::cos(kHalfPi * (1.0 - v));
                v = radius * la::normalize(v);
                if (std::isnan(v.x)) v = vec3(0.0);
              });
-  pImpl_->Finish();
   // Ignore preceding octahedron.
   pImpl_->InitializeOriginal();
+  pImpl_->CalculateBBox();
+  pImpl_->SetEpsilon();
+  pImpl_->SortGeometry();
+  pImpl_->SetNormalsAndCoplanar();
   return Manifold(pImpl_);
 }
 
@@ -275,9 +311,11 @@ Manifold Manifold::Extrude(const Polygons& crossSection, double height,
   }
 
   pImpl_->CreateHalfedges(triVertsDH);
-  pImpl_->Finish();
   pImpl_->InitializeOriginal();
-  pImpl_->CreateFaces();
+  pImpl_->CalculateBBox();
+  pImpl_->SetEpsilon();
+  pImpl_->SortGeometry();
+  pImpl_->SetNormalsAndCoplanar();
   return Manifold(pImpl_);
 }
 
@@ -316,7 +354,7 @@ Manifold Manifold::Revolve(const Polygons& crossSection, int circularSegments,
       }
       const size_t next = i + 1 == poly.size() ? 0 : i + 1;
       if ((poly[next].x < 0) != (poly[i].x < 0)) {
-        const double y = poly[next].y + poly[next].x *
+        const double y = poly[next].y - poly[next].x *
                                             (poly[i].y - poly[next].y) /
                                             (poly[i].x - poly[next].x);
         polygons.back().push_back({0, y});
@@ -352,8 +390,8 @@ Manifold Manifold::Revolve(const Polygons& crossSection, int circularSegments,
   const int nSlices = isFullRevolution ? nDivisions : nDivisions + 1;
 
   for (const auto& poly : polygons) {
-    std::size_t nPosVerts = 0;
-    std::size_t nRevolveAxisVerts = 0;
+    size_t nPosVerts = 0;
+    size_t nRevolveAxisVerts = 0;
     for (auto& pt : poly) {
       if (pt.x > 0) {
         nPosVerts++;
@@ -418,13 +456,17 @@ Manifold Manifold::Revolve(const Polygons& crossSection, int circularSegments,
   }
 
   pImpl_->CreateHalfedges(triVertsDH);
-  pImpl_->Finish();
   pImpl_->InitializeOriginal();
-  pImpl_->CreateFaces();
+  pImpl_->CalculateBBox();
+  pImpl_->SetEpsilon();
+  pImpl_->SortGeometry();
+  pImpl_->SetNormalsAndCoplanar();
   return Manifold(pImpl_);
 }
 
 /**
+ * Deprecated: Use BatchBoolean with OpType::Add instead.
+ *
  * Constructs a new manifold from a vector of other manifolds. This is a purely
  * topological operation, so care should be taken to avoid creating
  * overlapping results. It is the inverse operation of Decompose().
@@ -432,11 +474,7 @@ Manifold Manifold::Revolve(const Polygons& crossSection, int circularSegments,
  * @param manifolds A vector of Manifolds to lazy-union together.
  */
 Manifold Manifold::Compose(const std::vector<Manifold>& manifolds) {
-  std::vector<std::shared_ptr<CsgLeafNode>> children;
-  for (const auto& manifold : manifolds) {
-    children.push_back(manifold.pNode_->ToLeafNode());
-  }
-  return Manifold(CsgLeafNode::Compose(children));
+  return BatchBoolean(manifolds, OpType::Add);
 }
 
 /**
@@ -446,11 +484,11 @@ Manifold Manifold::Compose(const std::vector<Manifold>& manifolds) {
  */
 std::vector<Manifold> Manifold::Decompose() const {
   ZoneScoped;
-  UnionFind<> uf(NumVert());
+  DisjointSets uf(NumVert());
   // Graph graph;
   auto pImpl_ = GetCsgLeafNode().GetImpl();
   for (const Halfedge& halfedge : pImpl_->halfedge_) {
-    if (halfedge.IsForward()) uf.unionXY(halfedge.startVert, halfedge.endVert);
+    if (halfedge.IsForward()) uf.unite(halfedge.startVert, halfedge.endVert);
   }
   std::vector<int> componentIndices;
   const int numComponents = uf.connectedComponents(componentIndices);
@@ -476,9 +514,12 @@ std::vector<Manifold> Manifold::Decompose() const {
                 [i, &vertLabel](int v) { return vertLabel[v] == i; }) -
         vertNew2Old.begin();
     impl->vertPos_.resize(nVert);
+    impl->vertNormal_.resize(nVert);
     vertNew2Old.resize(nVert);
     gather(vertNew2Old.begin(), vertNew2Old.end(), pImpl_->vertPos_.begin(),
            impl->vertPos_.begin());
+    gather(vertNew2Old.begin(), vertNew2Old.end(), pImpl_->vertNormal_.begin(),
+           impl->vertNormal_.begin());
 
     Vec<int> faceNew2Old(NumTri());
     const auto& halfedge = pImpl_->halfedge_;
@@ -494,7 +535,8 @@ std::vector<Manifold> Manifold::Decompose() const {
 
     impl->GatherFaces(*pImpl_, faceNew2Old);
     impl->ReindexVerts(vertNew2Old, pImpl_->NumVert());
-    impl->Finish();
+    impl->CalculateBBox();
+    impl->SortGeometry();
 
     meshes.push_back(Manifold(impl));
   }

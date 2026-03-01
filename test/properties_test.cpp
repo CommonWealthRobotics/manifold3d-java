@@ -53,27 +53,38 @@ TEST(Properties, Tolerance) {
   double tol = sind(degrees);
   Manifold cube = Manifold::Cube({1, 1, 1}, true);
   Manifold imperfect = (cube ^ cube.Rotate(degrees)).AsOriginal();
+  EXPECT_EQ(imperfect.NumTri(), 28);
 
-  Manifold imperfect2 = imperfect.SetTolerance(tol);
+  Manifold imperfect2 = imperfect.Simplify(tol);
+  EXPECT_EQ(imperfect2.NumTri(), 12);
+
   MeshGL mesh = imperfect.GetMeshGL();
   mesh.tolerance = tol;
   Manifold imperfect3(mesh);
-
-  EXPECT_EQ(imperfect.NumTri(), 28);
-  EXPECT_EQ(imperfect2.NumTri(), 16);  // TODO: should be 12
-  EXPECT_EQ(imperfect3.NumTri(), 22);  // TODO: should be 12
+  EXPECT_EQ(imperfect3.NumTri(), 28);  // Don't automatically simplify
 
   EXPECT_NEAR(imperfect.Volume(), imperfect2.Volume(), 0.01);
   EXPECT_NEAR(imperfect.SurfaceArea(), imperfect2.SurfaceArea(), 0.02);
   EXPECT_NEAR(imperfect2.Volume(), imperfect3.Volume(), 0.01);
   EXPECT_NEAR(imperfect2.SurfaceArea(), imperfect3.SurfaceArea(), 0.02);
 
-#ifdef MANIFOLD_EXPORT
   if (options.exportModels) {
-    ExportMesh("tolerance.glb", imperfect2.GetMeshGL(), {});
-    ExportMesh("tolerance2.glb", imperfect3.GetMeshGL(), {});
+    WriteTestOBJ("tolerance.obj", imperfect2);
+    WriteTestOBJ("tolerance2.obj", imperfect3);
   }
-#endif
+}
+
+TEST(Properties, ToleranceSphere) {
+  const int n = 1000;
+  Manifold sphere = Manifold::Sphere(1, 4 * n);
+  EXPECT_EQ(sphere.NumTri(), 8 * n * n);
+
+  Manifold sphere2 = sphere.SetTolerance(0.01);
+  EXPECT_LT(sphere2.NumTri(), 2500);
+  EXPECT_EQ(sphere2.Genus(), 0);
+  EXPECT_NEAR(sphere.Volume(), sphere2.Volume(), 0.05);
+  EXPECT_NEAR(sphere.SurfaceArea(), sphere2.SurfaceArea(), 0.06);
+  if (options.exportModels) WriteTestOBJ("sphere.obj", sphere2);
 }
 
 /**
@@ -108,6 +119,36 @@ TEST(Properties, CalculateCurvature) {
     EXPECT_NEAR(GetMinProperty(sphereGL, gaussianIdx), 0.25, 0.25 * precision);
     EXPECT_NEAR(GetMaxProperty(sphereGL, gaussianIdx), 0.25, 0.25 * precision);
   }
+}
+
+TEST(Properties, Coplanar) {
+  Manifold peg = Manifold::Cube({1, 1, 2}).Translate({1, 1, 0}).AsOriginal();
+  const size_t pegID = peg.OriginalID();
+  Manifold hole = Manifold::Cube({3, 3, 1}) - peg;
+  hole = hole.AsOriginal();
+  std::vector<MeshGL> input = {hole.GetMeshGL(), peg.GetMeshGL()};
+  EXPECT_EQ(peg.Genus(), 0);
+  EXPECT_EQ(hole.Genus(), 1);
+
+  Manifold result = hole + peg;
+  EXPECT_EQ(result.Genus(), 0);
+  RelatedGL(result, input);
+
+  MeshGL resultGL = result.GetMeshGL();
+  float minPegZ = std::numeric_limits<float>::max();
+  for (size_t run = 0; run < resultGL.runOriginalID.size(); run++) {
+    if (resultGL.runOriginalID[run] == pegID) {
+      for (size_t t3 = resultGL.runIndex[run]; t3 < resultGL.runIndex[run + 1];
+           t3++) {
+        const size_t v = resultGL.triVerts[t3];
+        minPegZ = std::min(minPegZ,
+                           resultGL.vertProperties[v * resultGL.numProp + 2]);
+      }
+    }
+  }
+  EXPECT_EQ(minPegZ, 0);
+
+  if (options.exportModels) WriteTestOBJ("coplanar.obj", result);
 }
 
 // These tests verify the calculation of MinGap functions.

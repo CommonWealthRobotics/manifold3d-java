@@ -29,7 +29,7 @@
     flake-utils.lib.eachDefaultSystem
       (system:
       let
-        manifold-version = "3.0.0";
+        manifold-version = "3.4.0";
         pkgs = import nixpkgs {
           inherit system;
           overlays = [
@@ -38,34 +38,6 @@
                 version = clipper2-src.rev;
                 src = clipper2-src;
               });
-              # https://github.com/NixOS/nixpkgs/pull/343743#issuecomment-2424163602
-              binaryen =
-                let
-                  testsuite = final.fetchFromGitHub {
-                    owner = "WebAssembly";
-                    repo = "testsuite";
-                    rev = "e05365077e13a1d86ffe77acfb1a835b7aa78422";
-                    hash = "sha256-yvZ5AZTPUA6nsD3xpFC0VLthiu2CxVto66RTXBXXeJM=";
-                  };
-                in
-                prev.binaryen.overrideAttrs (_: rec {
-                  version = "119";
-                  src = pkgs.fetchFromGitHub {
-                    owner = "WebAssembly";
-                    repo = "binaryen";
-                    rev = "version_${version}";
-                    hash = "sha256-JYXtN3CW4qm/nnjGRvv3GxQ0x9O9wHtNYQLqHIYTTOA=";
-                  };
-                  preConfigure = ''
-                    if [ $doCheck -eq 1 ]; then
-                      sed -i '/googletest/d' third_party/CMakeLists.txt
-                      rmdir test/spec/testsuite
-                      ln -s ${testsuite} test/spec/testsuite
-                    else
-                      cmakeFlagsArray=($cmakeFlagsArray -DBUILD_TESTS=0)
-                    fi
-                  '';
-                });
             })
           ];
         };
@@ -94,11 +66,10 @@
             ]) ++ (if parallel then [ pkgs.tbb_2021_11 ] else [ ]);
             buildInputs = with pkgs; [
               clipper2
-              assimp
             ];
             cmakeFlags = [
+              "-DMANIFOLD_STRICT=ON"
               "-DMANIFOLD_CBIND=ON"
-              "-DMANIFOLD_EXPORT=ON"
               "-DBUILD_SHARED_LIBS=ON"
               "-DMANIFOLD_PAR=${if parallel then "ON" else "OFF"}"
             ];
@@ -123,7 +94,9 @@
             mkdir build
             cd build
             emcmake cmake -DCMAKE_BUILD_TYPE=MinSizeRel \
+            -DMANIFOLD_STRICT=ON \
             -DMANIFOLD_PAR=${if parallel then "ON" else "OFF"} \
+            -DMANIFOLD_USE_BUILTIN_TBB=${if parallel then "ON" else "OFF"} \
             -DFETCHCONTENT_SOURCE_DIR_GOOGLETEST=${gtest-src} \
             -DFETCHCONTENT_SOURCE_DIR_TBB=${onetbb-src} \
             -DFETCHCONTENT_SOURCE_DIR_CLIPPER2=../clipper2 ..
@@ -189,6 +162,9 @@
               # formatting tools
               gersemi
               black
+
+              # misc
+              matplotlib
             ]))
 
             ninja

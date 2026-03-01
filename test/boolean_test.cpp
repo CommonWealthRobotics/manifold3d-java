@@ -50,7 +50,7 @@ TEST(Boolean, MeshGLRoundTrip) {
   const Manifold result2(inGL);
 
   ASSERT_LT(result2.OriginalID(), 0);
-  ExpectMeshes(result2, {{16, 28}});
+  ExpectMeshes(result2, {{18, 32}});
   RelatedGL(result2, {original});
 
   const MeshGL outGL = result2.GetMeshGL();
@@ -73,13 +73,7 @@ TEST(Boolean, Normals) {
 
   MeshGL output = result.GetMeshGL(0);
 
-#ifdef MANIFOLD_EXPORT
-  ExportOptions opt;
-  opt.faceted = false;
-  opt.mat.roughness = 0;
-  opt.mat.normalIdx = 0;
-  if (options.exportModels) ExportMesh("normals.glb", output, opt);
-#endif
+  if (options.exportModels) WriteTestOBJ("normals.obj", result);
 
   output.mergeFromVert.clear();
   output.mergeToVert.clear();
@@ -133,9 +127,51 @@ TEST(Boolean, Cubes) {
   EXPECT_NEAR(result.Volume(), 1.6, 0.001);
   EXPECT_NEAR(result.SurfaceArea(), 9.2, 0.01);
 
-#ifdef MANIFOLD_EXPORT
-  if (options.exportModels) ExportMesh("cubes.glb", result.GetMeshGL(), {});
-#endif
+  if (options.exportModels) WriteTestOBJ("cubes.obj", result);
+}
+
+TEST(Boolean, Simplify) {
+  const int n = 10;
+  MeshGL cubeGL = Manifold::Cube().Refine(n).GetMeshGL();
+  size_t tri = 0;
+  for (auto& id : cubeGL.faceID) {
+    id = tri++;
+  }
+  Manifold cube(cubeGL);
+
+  const int nExpected = 20 * n * n;
+  Manifold result = cube + cube.Translate({1, 0, 0});
+  EXPECT_EQ(result.NumTri(), nExpected);
+  result = result.Simplify();
+  EXPECT_EQ(result.NumTri(), nExpected);
+
+  MeshGL resultGL = result.GetMeshGL();
+  resultGL.faceID.clear();
+  Manifold result2(resultGL);
+  EXPECT_EQ(result2.NumTri(), nExpected);
+  result2 = result2.Simplify();
+  EXPECT_EQ(result2.NumTri(), 20);
+}
+
+TEST(Boolean, SimplifyCracks) {
+  Manifold cylinder =
+      Manifold::Cylinder(2, 50, 50, 180)
+          .Rotate(
+              -89.999999999999)  // Rotating by -90 makes the result too perfect
+          .Translate(vec3(50, 0, 50));
+  Manifold cube = Manifold::Cube(vec3(100, 2, 50));
+  Manifold refined = (cylinder + cube).RefineToLength(1);
+  Manifold deformed =
+      refined.Warp([](vec3& p) { p.y += p.x - (p.x * p.x) / 100.0; });
+  Manifold simplified = deformed.Simplify(0.005);
+
+  // If Simplify adds cracks, volume decreases and surface area increases
+  EXPECT_EQ(deformed.Genus(), 0);
+  EXPECT_EQ(simplified.Genus(), 0);
+  EXPECT_NEAR(simplified.Volume(), deformed.Volume(), 10);
+  EXPECT_NEAR(simplified.SurfaceArea(), deformed.SurfaceArea(), 1);
+
+  if (options.exportModels) WriteTestOBJ("cracks.obj", simplified);
 }
 
 TEST(Boolean, NoRetainedVerts) {
@@ -174,6 +210,19 @@ TEST(Boolean, MixedNumProp) {
              }).Translate(vec3(0.5));
   EXPECT_EQ(result.NumProp(), 2);
   RelatedGL(result, {cubeUV, m1.GetMeshGL()});
+}
+
+TEST(Boolean, PropsMismatch) {
+  Manifold ma = Manifold::Cylinder(1, 1);
+  Manifold mb =
+      Manifold::Cube()
+          .Translate({50, 0, 0})
+          .SetProperties(1, [](double* newProp, vec3 pos, const double* _) {
+            newProp[0] = pos.x;
+          });
+
+  Manifold result = ma + mb;
+  EXPECT_EQ(result.Status(), Manifold::Error::NoError);
 }
 
 TEST(Boolean, UnionDifference) {
@@ -236,6 +285,110 @@ TEST(Boolean, Perturb) {
   EXPECT_FLOAT_EQ(empty.SurfaceArea(), 0.0);
 }
 
+TEST(Boolean, Perturb1) {
+  const Manifold big = Manifold::Extrude(
+      {{{0, 2}, {2, 0}, {4, 2}, {2, 4}}, {{1, 2}, {2, 3}, {3, 2}, {2, 1}}},
+      1.0);
+  const Manifold little =
+      Manifold::Extrude({{{2, 1}, {3, 2}, {2, 3}, {1, 2}}}, 1.0)
+          .Translate({0, 0, 1});
+  const Manifold punchHole =
+      Manifold::Extrude({{{1, 2}, {2, 2}, {2, 3}}}, 1.0).Translate({0, 0, 1});
+  const Manifold result = (big + little) - punchHole;
+
+  EXPECT_EQ(result.NumDegenerateTris(), 0);
+  EXPECT_EQ(result.NumVert(), 24);
+  EXPECT_FLOAT_EQ(result.Volume(), 7.5);
+  EXPECT_NEAR(result.SurfaceArea(), 38.2, 0.1);
+
+  if (options.exportModels) WriteTestOBJ("perturb1.obj", result);
+}
+
+TEST(Boolean, Perturb2) {
+  Manifold cube = Manifold::Cube(vec3(2), true);
+  MeshGL cubeGL = cube.GetMeshGL();
+
+  // Rotate so that nothing is axis-aligned
+  Manifold result = cube.Rotate(5, 10, 15);
+
+  for (size_t tri = 0; tri < cubeGL.NumTri(); ++tri) {
+    MeshGL prism;
+    prism.numProp = 3;
+    prism.triVerts = {4, 2, 0, 1, 3, 5};
+    for (const int v0 : {0, 1, 2}) {
+      const int v1 = (v0 + 1) % 3;
+      const int vIn0 = cubeGL.triVerts[3 * tri + v0];
+      const int vIn1 = cubeGL.triVerts[3 * tri + v1];
+      if (vIn1 > vIn0) {
+        prism.triVerts.push_back(2 * v0);
+        prism.triVerts.push_back(2 * v1);
+        prism.triVerts.push_back(2 * v1 + 1);
+        prism.triVerts.push_back(2 * v0);
+        prism.triVerts.push_back(2 * v1 + 1);
+        prism.triVerts.push_back(2 * v0 + 1);
+      } else {
+        prism.triVerts.push_back(2 * v0);
+        prism.triVerts.push_back(2 * v1);
+        prism.triVerts.push_back(2 * v0 + 1);
+        prism.triVerts.push_back(2 * v1);
+        prism.triVerts.push_back(2 * v1 + 1);
+        prism.triVerts.push_back(2 * v0 + 1);
+      }
+      for (const int j : {0, 1, 2}) {
+        prism.vertProperties.push_back(cubeGL.vertProperties[3 * vIn0 + j]);
+      }
+      for (const int j : {0, 1, 2}) {
+        prism.vertProperties.push_back(2 * cubeGL.vertProperties[3 * vIn0 + j]);
+      }
+    }
+    // All verts should be floating-point identical to one of 16 positions: the
+    // 8 starting result cube verts, or exactly double these coordinates.
+    result += Manifold(prism).Rotate(5, 10, 15);
+  }
+  // The result should be a double-sized cube, 4 units to a side.
+  // If symbolic perturbation fails, the number of verts and the surface area
+  // will increase, indicating cracks and internal geometry.
+  EXPECT_EQ(result.NumDegenerateTris(), 0);
+  EXPECT_EQ(result.NumVert(), 8);
+  EXPECT_FLOAT_EQ(result.Volume(), 64.0);
+  EXPECT_FLOAT_EQ(result.SurfaceArea(), 96.0);
+}
+
+TEST(Boolean, Perturb3) {
+  // Create a nasty gear pattern with many rotated cubes that creates
+  // antiparallel slivers (triangles with normals ~180 degrees apart)
+  // https://github.com/BrunoLevy/thingiCSG/blob/main/DATABASE/Basic/nasty_gear_1.scad
+
+  const int N = 16;  // Number of rotations for the gear pattern
+  const double alpha = 90.0 / N;
+
+  // Create outer gear - many rotated cubes unioned together
+  std::vector<Manifold> outerCubes;
+  const Manifold cube = Manifold::Cube({1, 1, 1}, true);
+  for (int i = 0; i < N; i++) {
+    outerCubes.push_back(cube.Rotate(0, 0, alpha * i));
+  }
+  Manifold gear = Manifold::BatchBoolean(outerCubes, OpType::Add);
+  Manifold outerGear = gear.Scale({2, 2, 1});
+
+  // Subtract inner from outer to create the nasty gear with slivers
+  Manifold nastyGear = outerGear - gear;
+
+  // const float topArea = CrossSection(gear.Project()).Area();
+  // const float sideArea = gear.SurfaceArea() - 2 * topArea;
+  const float expectedArea = 26.972;  // 3 * sideArea + 6 * topArea;
+  const float expectedVolume = outerGear.Volume() - gear.Volume();
+
+  // The gear should be valid and manifold
+  EXPECT_EQ(nastyGear.Status(), Manifold::Error::NoError);
+  EXPECT_FALSE(nastyGear.IsEmpty());
+  EXPECT_EQ(nastyGear.Genus(), 1);
+  EXPECT_NEAR(nastyGear.Volume(), expectedVolume, 1e-5);
+  EXPECT_NEAR(nastyGear.SurfaceArea(), expectedArea, 1e-4);
+
+  if (options.exportModels) WriteTestOBJ("nastyGear.obj", nastyGear);
+}
+
 TEST(Boolean, Coplanar) {
   Manifold cylinder = WithPositionColors(Manifold::Cylinder(1.0, 1.0));
   MeshGL cylinderGL = cylinder.GetMeshGL();
@@ -246,12 +399,7 @@ TEST(Boolean, Coplanar) {
   EXPECT_EQ(out.NumDegenerateTris(), 0);
   EXPECT_EQ(out.Genus(), 1);
 
-#ifdef MANIFOLD_EXPORT
-  ExportOptions opt;
-  opt.mat.roughness = 1;
-  opt.mat.colorIdx = 0;
-  if (options.exportModels) ExportMesh("coplanar.glb", out.GetMeshGL(), opt);
-#endif
+  if (options.exportModels) WriteTestOBJ("coplanar.obj", out);
 
   RelatedGL(out, {cylinderGL});
 }
@@ -267,6 +415,13 @@ TEST(Boolean, MultiCoplanar) {
   EXPECT_NEAR(out.SurfaceArea(), 2.76, 1e-5);
 }
 
+TEST(Boolean, AlmostCoplanar) {
+  Manifold tet = Manifold::Tetrahedron();
+  Manifold result =
+      tet + tet.Rotate(0.001, -0.08472872823860228, 0.055910459615905288) + tet;
+  ExpectMeshes(result, {{20, 36}});
+}
+
 TEST(Boolean, FaceUnion) {
   Manifold cubes = Manifold::Cube();
   cubes += cubes.Translate({1, 0, 0});
@@ -275,9 +430,7 @@ TEST(Boolean, FaceUnion) {
   EXPECT_NEAR(cubes.Volume(), 2, 1e-5);
   EXPECT_NEAR(cubes.SurfaceArea(), 10, 1e-5);
 
-#ifdef MANIFOLD_EXPORT
-  if (options.exportModels) ExportMesh("faceUnion.glb", cubes.GetMeshGL(), {});
-#endif
+  if (options.exportModels) WriteTestOBJ("faceUnion.obj", cubes);
 }
 
 TEST(Boolean, EdgeUnion) {
@@ -344,6 +497,114 @@ TEST(Boolean, SplitByPlane60) {
   EXPECT_NEAR(splits.first.Volume(), splits.second.Volume(), 1e-5);
 }
 
+TEST(Boolean, ConvexConvexMinkowski) {
+  double r = 0.1;
+  double w = 2.0;
+  Manifold sphere = Manifold::Sphere(r, 20);
+  Manifold cube = Manifold::Cube({w, w, w});
+  Manifold sum = cube.MinkowskiSum(sphere);
+  // Analytical volume of rounded cuboid: cube + 6 slabs + 12 quarter-cylinders
+  // + 8 sphere octants = w³ + 6w²r + 3πwr² + (4/3)πr³
+  double analyticalVolume = w * w * w + 6 * w * w * r + 3 * kPi * w * r * r +
+                            (4.0 / 3) * kPi * r * r * r;
+  // Analytical surface area: 6 faces + 12 quarter-cylinders + 8 octants
+  // = 6w² + 6πwr + 4πr²
+  double analyticalArea = 6 * w * w + 6 * kPi * w * r + 4 * kPi * r * r;
+  // Discrete sphere approximation differs from analytical by ~1%
+  EXPECT_NEAR(sum.Volume(), analyticalVolume, 0.15);
+  EXPECT_NEAR(sum.SurfaceArea(), analyticalArea, 0.5);
+  EXPECT_EQ(sum.Genus(), 0);
+
+  if (options.exportModels) WriteTestOBJ("minkowski-convex-convex.obj", sum);
+}
+
+TEST(Boolean, ConvexConvexMinkowskiDifference) {
+  ManifoldParamGuard guard;
+  ManifoldParams().processOverlaps = true;
+
+  double r = 0.1;
+  double w = 2.0;
+  Manifold sphere = Manifold::Sphere(r, 20);
+  Manifold cube = Manifold::Cube({w, w, w});
+  Manifold difference = cube.MinkowskiDifference(sphere);
+  // Analytical volume of eroded cube: (w-2r)³
+  double analyticalVolume = (w - 2 * r) * (w - 2 * r) * (w - 2 * r);
+  EXPECT_NEAR(difference.Volume(), analyticalVolume, 0.1);
+  // Analytical surface area: 6*(w-2r)²
+  double analyticalArea = 6 * (w - 2 * r) * (w - 2 * r);
+  EXPECT_NEAR(difference.SurfaceArea(), analyticalArea, 0.1);
+  EXPECT_EQ(difference.Genus(), 0);
+
+  if (options.exportModels)
+    WriteTestOBJ("minkowski-convex-convex-difference.obj", difference);
+}
+
+TEST(Boolean, NonConvexConvexMinkowskiSum) {
+  ManifoldParamGuard guard;
+  ManifoldParams().processOverlaps = true;
+
+  Manifold sphere = Manifold::Sphere(1.2, 20);
+  Manifold cube = Manifold::Cube({2.0, 2.0, 2.0}, true);
+  Manifold nonConvex = cube - sphere;
+  Manifold sum = nonConvex.MinkowskiSum(Manifold::Sphere(0.1, 20));
+  EXPECT_NEAR(sum.Volume(), 4.841, 1e-3);
+  EXPECT_NEAR(sum.SurfaceArea(), 34.06, 1e-2);
+  EXPECT_EQ(sum.Genus(), 5);
+
+  if (options.exportModels)
+    WriteTestOBJ("minkowski-nonconvex-convex-sum.obj", sum);
+}
+
+TEST(Boolean, NonConvexConvexMinkowskiDifference) {
+  ManifoldParamGuard guard;
+  ManifoldParams().processOverlaps = true;
+
+  Manifold sphere = Manifold::Sphere(1.2, 20);
+  Manifold cube = Manifold::Cube({2.0, 2.0, 2.0}, true);
+  Manifold nonConvex = cube - sphere;
+  Manifold difference =
+      nonConvex.MinkowskiDifference(Manifold::Sphere(0.05, 20));
+  EXPECT_NEAR(difference.Volume(), 0.778, 1e-3);
+  EXPECT_NEAR(difference.SurfaceArea(), 16.70, 1e-2);
+  EXPECT_EQ(difference.Genus(), 5);
+
+  if (options.exportModels)
+    WriteTestOBJ("minkowski-nonconvex-convex-difference.obj", difference);
+}
+
+TEST(Boolean, NonConvexNonConvexMinkowskiSum) {
+  ManifoldParamGuard guard;
+  ManifoldParams().processOverlaps = true;
+
+  Manifold tet = Manifold::Tetrahedron();
+  Manifold nonConvex = tet - tet.Rotate(0, 0, 90).Translate(vec3(1));
+
+  Manifold sum = nonConvex.MinkowskiSum(nonConvex.Scale(vec3(0.5)));
+  EXPECT_NEAR(sum.Volume(), 8.65625, 1e-5);
+  EXPECT_NEAR(sum.SurfaceArea(), 31.17691, 1e-5);
+  EXPECT_EQ(sum.Genus(), 0);
+
+  if (options.exportModels)
+    WriteTestOBJ("minkowski-nonconvex-nonconvex-sum.obj", sum);
+}
+
+TEST(Boolean, NonConvexNonConvexMinkowskiDifference) {
+  ManifoldParamGuard guard;
+  ManifoldParams().processOverlaps = true;
+
+  Manifold tet = Manifold::Tetrahedron();
+  Manifold nonConvex = tet - tet.Rotate(0, 0, 90).Translate(vec3(1));
+
+  Manifold difference =
+      nonConvex.MinkowskiDifference(nonConvex.Scale(vec3(0.1)));
+  EXPECT_NEAR(difference.Volume(), 0.815542, 1e-5);
+  EXPECT_NEAR(difference.SurfaceArea(), 6.95045, 1e-5);
+  EXPECT_EQ(difference.Genus(), 0);
+
+  if (options.exportModels)
+    WriteTestOBJ("minkowski-nonconvex-nonconvex-diff.obj", difference);
+}
+
 /**
  * This tests that non-intersecting geometry is properly retained.
  */
@@ -376,7 +637,7 @@ TEST(Boolean, Winding) {
   std::vector<Manifold> cubes;
   cubes.emplace_back(Manifold::Cube(vec3(3.0), true));
   cubes.emplace_back(Manifold::Cube(vec3(2.0), true));
-  Manifold doubled = Manifold::Compose(cubes);
+  Manifold doubled = Manifold::BatchBoolean(cubes, OpType::Add);
 
   Manifold cube = Manifold::Cube(vec3(1.0), true);
   EXPECT_FALSE((cube ^= doubled).IsEmpty());
@@ -422,14 +683,38 @@ TEST(Boolean, Precision2) {
   EXPECT_FALSE((cube ^ cube2).IsEmpty());
 }
 
-TEST(Boolean, DISABLED_SimpleCubeRegression) {
-  ManifoldParams().intermediateChecks = true;
-  ManifoldParams().processOverlaps = false;
+TEST(Boolean, SimpleCubeRegression) {
+  ManifoldParamGuard guard;
+  ManifoldParams().selfIntersectionChecks = true;
   Manifold result =
       Manifold::Cube().Rotate(-0.10000000000000001, 0.10000000000000001, -1.) +
       Manifold::Cube() -
       Manifold::Cube().Rotate(-0.10000000000000001, -0.10000000000066571, -1.);
   EXPECT_EQ(result.Status(), Manifold::Error::NoError);
-  ManifoldParams().intermediateChecks = false;
-  ManifoldParams().processOverlaps = true;
+}
+
+TEST(Boolean, BatchBoolean) {
+  Manifold cube = Manifold::Cube({100, 100, 1});
+  Manifold cylinder1 = Manifold::Cylinder(1, 30).Translate({-10, 30, 0});
+  Manifold cylinder2 = Manifold::Cylinder(1, 20).Translate({110, 20, 0});
+  Manifold cylinder3 = Manifold::Cylinder(1, 40).Translate({50, 110, 0});
+
+  Manifold intersect = Manifold::BatchBoolean(
+      {cube, cylinder1, cylinder2, cylinder3}, OpType::Intersect);
+
+  EXPECT_TRUE(intersect.IsEmpty());
+
+  Manifold add = Manifold::BatchBoolean({cube, cylinder1, cylinder2, cylinder3},
+                                        OpType::Add);
+
+  ExpectMeshes(add, {{152, 300}});
+  EXPECT_FLOAT_EQ(add.Volume(), 16290.478);
+  EXPECT_FLOAT_EQ(add.SurfaceArea(), 33156.594);
+
+  Manifold subtract = Manifold::BatchBoolean(
+      {cube, cylinder1, cylinder2, cylinder3}, OpType::Subtract);
+
+  ExpectMeshes(subtract, {{102, 200}});
+  EXPECT_FLOAT_EQ(subtract.Volume(), 7226.043);
+  EXPECT_FLOAT_EQ(subtract.SurfaceArea(), 14904.597);
 }

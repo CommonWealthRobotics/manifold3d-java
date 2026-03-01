@@ -12,9 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #include <algorithm>
+#include <filesystem>
+#include <fstream>
 
 #include "manifold/manifold.h"
-#include "manifold/polygon.h"
 #include "test.h"
 
 #if (MANIFOLD_PAR == 1)
@@ -37,18 +38,20 @@ void print_usage() {
   printf("-------------------------------\n");
   printf("manifold_test specific options:\n");
   printf("  -h: Print this message\n");
-  printf("  -e: Export GLB models of samples\n");
-  printf("  -c: Enable intermediate checks (needs MANIFOLD_DEBUG)\n");
+  printf("  -e: Export OBJ models of samples\n");
+  printf("  -c: Enable self-intersection checks (needs MANIFOLD_DEBUG)\n");
   printf(
-      "  -v: Enable verbose output and intermediate checks (only works if "
-      "compiled with MANIFOLD_DEBUG "
+      "  -v: Enable verbose output (only works if compiled with MANIFOLD_DEBUG "
       "flag)\n");
+  printf(
+      "  -vv: Enable extra verbose output for triangulator (only works if "
+      "compiled with MANIFOLD_DEBUG flag)\n");
 }
 
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
 
-  const char* name = "test setup";
+  [[maybe_unused]] const char* name = "test setup";
   FrameMarkStart(name);
 
   // warmup tbb for emscripten, according to
@@ -79,20 +82,16 @@ int main(int argc, char** argv) {
         print_usage();
         return 0;
       case 'e':
-#ifndef MANIFOLD_EXPORT
-        printf(
-            "Export not possible because MANIFOLD_EXPORT compile flag is not "
-            "set.\n");
-#endif
         options.exportModels = true;
         break;
       case 'v':
-        options.params.verbose = true;
-        manifold::ManifoldParams().verbose = true;
-        manifold::ManifoldParams().intermediateChecks = true;
+        manifold::ManifoldParams().verbose = 1;
+        if (argv[i][2] == 'v') {
+          manifold::ManifoldParams().verbose = 2;
+        }
         break;
       case 'c':
-        manifold::ManifoldParams().intermediateChecks = true;
+        manifold::ManifoldParams().selfIntersectionChecks = true;
         break;
       default:
         fprintf(stderr, "Unknown option: %s\n", argv[i]);
@@ -101,8 +100,8 @@ int main(int argc, char** argv) {
     }
   }
 
-  manifold::PolygonParams().intermediateChecks = true;
-  manifold::PolygonParams().processOverlaps = false;
+  manifold::ManifoldParams().intermediateChecks = true;
+  manifold::ManifoldParams().processOverlaps = false;
 
   FrameMarkEnd(name);
 
@@ -456,10 +455,51 @@ void CheckGL(const Manifold& manifold, bool noMerge) {
   CheckFinite(meshGL);
 }
 
-#ifdef MANIFOLD_EXPORT
-MeshGL ReadMesh(const std::string& filename) {
-  std::string file = __FILE__;
-  std::string dir = file.substr(0, file.rfind('/'));
-  return ImportMesh(dir + "/models/" + filename);
+void CheckGLEquiv(const MeshGL& mgl1, const MeshGL& mgl2) {
+  EXPECT_EQ(mgl1.NumVert(), mgl2.NumVert());
+  EXPECT_EQ(mgl1.NumTri(), mgl2.NumTri());
+  EXPECT_EQ(mgl1.numProp, mgl2.numProp);
+
+  int ntri = mgl1.NumTri();
+  for (int t = 0; t < ntri; t++) {
+    for (int i = 0; i < 3; i++) {
+      ASSERT_EQ(mgl1.triVerts[3 * t + i], mgl2.triVerts[3 * t + i]);
+    }
+  }
+
+  int nprop = mgl1.numProp;
+  int nvert = mgl1.NumVert();
+  for (int v = 0; v < nvert; v++) {
+    for (int p = 0; p < nprop; p++) {
+      ASSERT_EQ(mgl1.vertProperties[v * nprop + p],
+                mgl2.vertProperties[v * nprop + p]);
+    }
+  }
 }
+
+Manifold ReadTestOBJ(const std::string& filename) {
+  return Manifold(ReadTestMeshGL64OBJ(filename));
+}
+
+MeshGL64 ReadTestMeshGL64OBJ(const std::string& filename) {
+#ifdef __EMSCRIPTEN__
+  std::string obj = "/models/" + filename;
+#else
+  std::filesystem::path file(__FILE__);
+  std::filesystem::path obj = file.parent_path();
+  obj.append("models");
+  obj.append(filename);
 #endif
+  std::ifstream f;
+  f.open(obj);
+  MeshGL64 a = ReadOBJ(f);
+  f.close();
+  return a;
+}
+
+void WriteTestOBJ(const std::string& filename, Manifold m) {
+  std::ofstream f;
+  f.open(filename);
+  WriteOBJ(f, m.GetMeshGL64());
+  f.close();
+}

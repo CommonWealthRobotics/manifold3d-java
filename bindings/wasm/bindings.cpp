@@ -15,12 +15,9 @@
 #include <emscripten/bind.h>
 #include <emscripten/val.h>
 
-#include <vector>
-
 #include "helpers.cpp"
 #include "manifold/cross_section.h"
 #include "manifold/manifold.h"
-#include "manifold/polygon.h"
 
 #if (MANIFOLD_PAR == 1)
 #include <tbb/parallel_for.h>
@@ -93,7 +90,8 @@ EMSCRIPTEN_BINDINGS(whatever) {
   enum_<CrossSection::JoinType>("jointype")
       .value("Square", CrossSection::JoinType::Square)
       .value("Round", CrossSection::JoinType::Round)
-      .value("Miter", CrossSection::JoinType::Miter);
+      .value("Miter", CrossSection::JoinType::Miter)
+      .value("Bevel", CrossSection::JoinType::Bevel);
 
   value_object<Rect>("rect").field("min", &Rect::min).field("max", &Rect::max);
   value_object<Box>("box").field("min", &Box::min).field("max", &Box::max);
@@ -129,7 +127,7 @@ EMSCRIPTEN_BINDINGS(whatever) {
       .function("numVert", &CrossSection::NumVert)
       .function("numContour", &CrossSection::NumContour)
       .function("_Bounds", &CrossSection::Bounds)
-      .function("simplify", &CrossSection::Simplify)
+      .function("_Simplify", &CrossSection::Simplify)
       .function("_Offset", &cross_js::Offset)
       .function("_ToPolygons", &CrossSection::ToPolygons)
       .function("hull",
@@ -155,6 +153,8 @@ EMSCRIPTEN_BINDINGS(whatever) {
       .function("_Split", &man_js::Split)
       .function("_SplitByPlane", &man_js::SplitByPlane)
       .function("_TrimByPlane", &Manifold::TrimByPlane)
+      .function("minkowskiSum", &Manifold::MinkowskiSum)
+      .function("minkowskiDifference", &Manifold::MinkowskiDifference)
       .function("_Slice", &Manifold::Slice)
       .function("_Project", &Manifold::Project)
       .function("hull", select_overload<Manifold() const>(&Manifold::Hull))
@@ -174,7 +174,7 @@ EMSCRIPTEN_BINDINGS(whatever) {
       .function("_Decompose", select_overload<std::vector<Manifold>() const>(
                                   &Manifold::Decompose))
       .function("isEmpty", &Manifold::IsEmpty)
-      .function("status", &Manifold::Status)
+      .function("status", &man_js::Status)
       .function("numVert", &Manifold::NumVert)
       .function("numEdge", &Manifold::NumEdge)
       .function("numTri", &Manifold::NumTri)
@@ -183,6 +183,7 @@ EMSCRIPTEN_BINDINGS(whatever) {
       .function("_boundingBox", &Manifold::BoundingBox)
       .function("tolerance", &Manifold::GetTolerance)
       .function("setTolerance", &Manifold::SetTolerance)
+      .function("_Simplify", &Manifold::Simplify)
       .function("genus", &Manifold::Genus)
       .function("volume", &Manifold::Volume)
       .function("surfaceArea", &Manifold::SurfaceArea)
@@ -204,7 +205,7 @@ EMSCRIPTEN_BINDINGS(whatever) {
   function("_LevelSet", &man_js::LevelSet);
   function("_Merge", &js::Merge);
   function("_ReserveIDs", &Manifold::ReserveIDs);
-  function("_manifoldCompose", &Manifold::Compose);
+  function("_manifoldCompose", &man_js::UnionN);
   function("_manifoldUnionN", &man_js::UnionN);
   function("_manifoldDifferenceN", &man_js::DifferenceN);
   function("_manifoldIntersectionN", &man_js::IntersectionN);

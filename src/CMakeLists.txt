@@ -21,7 +21,9 @@ set(
   edge_op.cpp
   face_op.cpp
   impl.cpp
+  lazy_collider.cpp
   manifold.cpp
+  minkowski.cpp
   polygon.cpp
   properties.cpp
   quickhull.cpp
@@ -29,9 +31,9 @@ set(
   smoothing.cpp
   sort.cpp
   subdivision.cpp
+  tree2d.cpp
   # optional source files
   $<$<BOOL:${MANIFOLD_CROSS_SECTION}>:cross_section/cross_section.cpp>
-  $<$<BOOL:${MANIFOLD_EXPORT}>:meshIO/meshIO.cpp>
 )
 
 set(
@@ -42,12 +44,13 @@ set(
   hashtable.h
   impl.h
   iters.h
+  lazy_collider.h
   mesh_fixes.h
   parallel.h
   quickhull.h
   shared.h
-  sparse.h
   svd.h
+  tree2d.h
   tri_dist.h
   utils.h
   vec.h
@@ -66,7 +69,6 @@ target_link_libraries(
     # optional dependencies
     $<$<BOOL:${MANIFOLD_PAR}>:TBB::tbb>
     $<$<BOOL:${MANIFOLD_CROSS_SECTION}>:Clipper2::Clipper2>
-    $<$<BOOL:${MANIFOLD_EXPORT}>:assimp::assimp>
 )
 
 target_compile_options(manifold PRIVATE ${MANIFOLD_FLAGS})
@@ -75,8 +77,8 @@ target_compile_features(manifold PUBLIC cxx_std_17)
 set(
   OPTIONS
   MANIFOLD_DEBUG
+  MANIFOLD_ASSERT
   MANIFOLD_CROSS_SECTION
-  MANIFOLD_EXPORT
   TRACY_ENABLE
   TRACY_MEMORY_USAGE
 )

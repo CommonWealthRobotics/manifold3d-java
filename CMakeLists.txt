@@ -22,12 +22,14 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(CMAKE_VERBOSE_MAKEFILE ON)
 
+include(CTest)
+enable_testing()
 include(GNUInstallDirs)
 include(CMakeDependentOption)
 
 # Define Manifold version
 set(MANIFOLD_VERSION_MAJOR 3)
-set(MANIFOLD_VERSION_MINOR 0)
+set(MANIFOLD_VERSION_MINOR 4)
 set(MANIFOLD_VERSION_PATCH 0)
 set(
   MANIFOLD_VERSION
@@ -37,12 +39,13 @@ set(
 # Primary user facing options
 option(MANIFOLD_CROSS_SECTION "Build CrossSection for 2D support" ON)
 option(MANIFOLD_DEBUG "Enable debug tracing/timing" OFF)
+option(MANIFOLD_ASSERT "Enable assertions - requires MANIFOLD_DEBUG" OFF)
+option(MANIFOLD_STRICT "Treat compile warnings as fatal build errors" OFF)
 option(
   MANIFOLD_DOWNLOADS
   "Allow Manifold build to download missing dependencies"
   ON
 )
-option(MANIFOLD_EXPORT "Build mesh export (via assimp) utility library" OFF)
 option(MANIFOLD_PAR "Enable Parallel backend" OFF)
 option(
   MANIFOLD_OPTIMIZED
@@ -90,18 +93,17 @@ set(MANIFOLD_FLAGS "" CACHE STRING "Manifold compiler flags")
 option(TRACY_ENABLE "Use tracy profiling" OFF)
 option(TRACY_MEMORY_USAGE "Track memory allocation with tracy (expensive)" OFF)
 option(MANIFOLD_FUZZ "Enable fuzzing tests" OFF)
+option(ASSIMP_ENABLE "Enable ASSIMP for utilities in extras" OFF)
 mark_as_advanced(TRACY_ENABLE)
 mark_as_advanced(TRACY_MEMORY_USAGE)
 mark_as_advanced(MANIFOLD_FUZZ)
+mark_as_advanced(ASSIMP_ENABLE)
 
 # Always build position independent code for relocatability
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # Various Compiler Flags
 if(MANIFOLD_FUZZ)
-  if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-    message(FATAL_ERROR "fuzztest only supports clang")
-  endif()
   # we should enable debug checks
   set(MANIFOLD_DEBUG ON)
   # enable fuzztest fuzzing mode
@@ -156,14 +158,18 @@ else()
     -Wno-unknown-warning-option
     -Wno-unused
     -Wno-shorten-64-to-32
+    -Wno-alloc-size-larger-than
   )
   if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
     if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
       list(APPEND WARNING_FLAGS -Wno-format)
     endif()
   elseif(PROJECT_IS_TOP_LEVEL)
-    # only do -Werror if we are the top level project
-    list(APPEND WARNING_FLAGS -Werror)
+    # only do -Werror if we are the top level project and
+    # MANIFOLD_STRICT is on
+    if(MANIFOLD_STRICT)
+      list(APPEND WARNING_FLAGS -Werror)
+    endif()
   endif()
   list(APPEND MANIFOLD_FLAGS ${WARNING_FLAGS})
   if(
@@ -175,6 +181,17 @@ else()
   endif()
   if("${CMAKE_BUILD_TYPE}" STREQUAL "RelWithDebInfo")
     list(APPEND MANIFOLD_FLAGS -fno-omit-frame-pointer)
+  endif()
+  # disable fp math optimizations, e.g. FMA for supported architectures, as
+  # this changes floating-point results
+  include(CheckCXXCompilerFlag)
+  check_cxx_compiler_flag(-ffp-contract=off HAS_FP_CONTRACT)
+  check_cxx_compiler_flag(-fexcess-precision=standard HAS_FP_PRECISION)
+  if(HAS_FP_CONTRACT)
+    list(APPEND MANIFOLD_FLAGS -ffp-contract=off)
+  endif()
+  if(HAS_FP_PRECISION)
+    list(APPEND MANIFOLD_FLAGS -fexcess-precision=standard)
   endif()
   if(CODE_COVERAGE)
     list(
@@ -278,7 +295,6 @@ set(
   polygon.h
   vec_view.h
   $<$<BOOL:${MANIFOLD_CROSS_SECTION}>:cross_section.h>
-  $<$<BOOL:${MANIFOLD_EXPORT}>:meshIO.h>
 )
 list(TRANSFORM MANIFOLD_PUBLIC_HDRS PREPEND include/manifold/)
 list(
