@@ -543,7 +543,7 @@ jobs:
           -DpomFile=bindings/java/pom.xml \
           -DrepositoryId=clojars \
           -Durl=https://clojars.org/repo \
-          -DgroupId=org.clojars.cartesiantheatrics \
+          -DgroupId=com.github.madhephaestus \
           -DartifactId=manifold3d \
           -Dversion=$VERSION \
           -Dpackaging=jar \
