@@ -7,6 +7,8 @@ name: CI
 on:
   push:
     branches: [ master, main ]
+    tags:
+      - 'v*'
   pull_request:
     branches: [ master, main ]
 
@@ -18,7 +20,7 @@ jobs:
         cuda_support: [OFF]
         parallel_backend: [NONE, TBB]
     runs-on: ubuntu-22.04
-    if: github.event.pull_request.draft == false
+    if: github.event.pull_request.draft == false || startsWith(github.ref, 'refs/tags/')
     outputs:
       java_package_version_changed: ${{ steps.check_version.outputs.changed }}
     container:
@@ -53,7 +55,7 @@ jobs:
       run: |
         mkdir build
         cd build
-        cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DMANIFOLD_DEBUG=ON -DMANIFOLD_EXPORT=ON -DMANIFOLD_PAR=${{matrix.parallel_backend}} .. && make
+        cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DMANIFOLD_DEBUG=ON -DMANIFOLD_EXPORT=ON -DMANIFOLD_PAR=${{matrix.parallel_backend}} -DCMAKE_POLICY_VERSION_MINIMUM=3.5 .. && make
     - name: Get version
       id: get_version
       run: echo "VERSION=$(cat bindings/java/version.txt)" >> $GITHUB_ENV
@@ -128,7 +130,7 @@ jobs:
       matrix:
         parallel_backend: [NONE, TBB]
     runs-on: macos-14
-    if: github.event.pull_request.draft == false
+    if: github.event.pull_request.draft == false || startsWith(github.ref, 'refs/tags/')
     steps:
     - name: Install Python 3.12
       run: |
@@ -163,7 +165,7 @@ jobs:
       run: |
         mkdir build
         cd build
-        cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DMANIFOLD_EXPORT=ON -DMANIFOLD_PAR=${{matrix.parallel_backend}} .. && make
+        cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DMANIFOLD_EXPORT=ON -DMANIFOLD_PAR=${{matrix.parallel_backend}} -DCMAKE_POLICY_VERSION_MINIMUM=3.5 .. && make
       shell: bash
     - name: Find Libs
       run: |
@@ -262,3 +264,50 @@ jobs:
       env:
         CLOJARS_PASSPHRASE: ${{ secrets.CLOJARS_PASSPHRASE }}
         CLOJARS_TOKEN: ${{ secrets.CLOJARS_TOKEN }}
+
+  create_release:
+    runs-on: ubuntu-22.04
+    needs: [build, build_mac]
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
+    - name: Get version
+      id: get_version
+      run: echo "VERSION=$(cat bindings/java/version.txt)" >> $GITHUB_ENV
+      shell: bash
+    - name: Download Linux JAR
+      uses: actions/download-artifact@v4
+      with:
+        name: manifold_java_bindings_linux_NONE_OFF_${{env.VERSION}}
+        path: linux-jar
+    - name: Download Linux TBB JAR
+      uses: actions/download-artifact@v4
+      with:
+        name: manifold_java_bindings_linux_TBB_OFF_${{env.VERSION}}
+        path: linux-tbb-jar
+    - name: Download Mac NONE JAR
+      uses: actions/download-artifact@v4
+      with:
+        name: manifold_java_bindings_mac_NONE_${{env.VERSION}}
+        path: mac-jar
+    - name: Download Mac TBB JAR
+      uses: actions/download-artifact@v4
+      with:
+        name: manifold_java_bindings_mac_TBB_${{env.VERSION}}
+        path: mac-tbb-jar
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ github.ref_name }}
+        name: Release ${{ github.ref_name }}
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+        files: |
+          linux-jar/*.jar
+          linux-tbb-jar/*.jar
+          mac-jar/*.jar
+          mac-tbb-jar/*.jar
