@@ -146,7 +146,6 @@ jobs:
         brew install pkg-config assimp
         # pip install trimesh
     - name: Install TBB
-      if: matrix.parallel_backend == 'TBB'
       run: brew install tbb
     - name: Install Java and Maven
       run: |

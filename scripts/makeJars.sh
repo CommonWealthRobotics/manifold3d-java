@@ -5,4 +5,4 @@ cd ..
 cd bindings/java
 
 mvn versions:set -DnewVersion=$(cat version.txt) --file pom.xml
-mvn package -Dos.classifier=linux$BACKEND-x86_64
+mvn package -Dos.classifier=linux-x86_64
