@@ -979,16 +979,19 @@ std::vector<float> Manifold::GetVertices() const {
 
 std::vector<int> Manifold::GetTriangles() const {
   const Impl& impl = *GetCsgLeafNode().GetImpl();
-  Vec<ivec3> triVerts = impl.meshRelation_.triProperties;
+  // Removed: Vec<ivec3> triVerts = impl.meshRelation_.triProperties;
+  // (triProperties no longer exists, and triVerts was unused anyway)
+
   int numTri = impl.NumTri();
   std::vector<int> ret;
-  ret.reserve(numTri);
-  std::vector<int> triNew2Old(numTri);
+  ret.reserve(numTri * 3); // fix: reserve 3x for 3 verts per tri
 
+  std::vector<int> triNew2Old(numTri);
   std::iota(triNew2Old.begin(), triNew2Old.end(), 0);
+
   const bool isOriginal = impl.meshRelation_.originalID >= 0;
   VecView<const TriRef> triRef = impl.meshRelation_.triRef;
-  // Don't sort originals - keep them in order
+
   if (!isOriginal) {
     std::sort(triNew2Old.begin(), triNew2Old.end(), [triRef](int a, int b) {
       return triRef[a].originalID == triRef[b].originalID
@@ -997,15 +1000,13 @@ std::vector<int> Manifold::GetTriangles() const {
     });
   }
 
-
   for (int tri = 0; tri < numTri; ++tri) {
     const int oldTri = triNew2Old[tri];
     for (const int i : {0, 1, 2})
       ret.push_back(impl.halfedge_[3 * oldTri + i].startVert);
-
   }
-  return ret;
 
+  return ret;
 }
 
 /**
