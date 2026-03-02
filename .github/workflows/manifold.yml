@@ -94,6 +94,7 @@ jobs:
         verbose: true
     - name: test cmake consumer
       run: |
+        mkdir -P build
         cd build
         sudo cmake --install .
         cd ..
