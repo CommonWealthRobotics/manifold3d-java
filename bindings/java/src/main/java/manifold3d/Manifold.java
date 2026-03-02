@@ -32,7 +32,7 @@ import manifold3d.linalg.IntegerVec3;
 import org.bytedeco.javacpp.*;
 import org.bytedeco.javacpp.annotation.*;
 
-@Platform(compiler = "cpp17", include = {"manifold/manifold.h", "manifold/meshIO.h"},
+@Platform(compiler = "cpp17", include = {"manifold/manifold.h", "../extras/meshIO.h"},
           linkpath = { LibraryPaths.MANIFOLD_LIB_DIR },
           link = { "manifold" })
 @Namespace("manifold")

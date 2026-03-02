@@ -5,7 +5,7 @@ import org.bytedeco.javacpp.annotation.*;
 
 import manifold3d.linalg.DoubleVec3;
 
-@Platform(compiler = "cpp17", include = "manifold/meshIO.h")
+@Platform(compiler = "cpp17", include = "../extras/meshIO.h")
 @Namespace("manifold")
 public class Material extends Pointer {
     static { Loader.load(); }
