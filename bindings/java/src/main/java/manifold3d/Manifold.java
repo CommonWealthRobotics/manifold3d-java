@@ -46,6 +46,11 @@ public class Manifold extends Pointer {
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
+            try {
+                System.load(Loader.extractResource("/libmeshIO.so", null, "libmeshIO", ".so").getAbsolutePath());
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
         } else if (osName.contains("windows")) {
             try {
                 System.out.println("Loading manifold");
@@ -57,7 +62,7 @@ public class Manifold extends Pointer {
         } else if (osName.contains("mac")) {
             try {
                 System.out.println("Loading Manifold");
-                System.load(Loader.extractResource("/libmanifold.3.0.0.dylib", null, "libmanifold", ".dylib").getAbsolutePath());
+                System.load(Loader.extractResource("/libmanifold.3.4.0.dylib", null, "libmanifold", ".dylib").getAbsolutePath());
                 System.out.println("Finished Loading.");
             } catch (IOException e) {
                 throw new RuntimeException(e);

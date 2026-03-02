@@ -49,10 +49,17 @@
                 <directory>../../build/bin</directory>
             </resource>
             <resource>
+                <directory>../../build/extras/</directory>
+                <includes>
+                    <include>libmeshIO.so</include>
+                    <include>libmeshIO.3.4.0.dylib</include>
+                </includes>
+            </resource>
+            <resource>
                 <directory>../../build/src/</directory>
                 <includes>
                     <include>libmanifold.so</include>
-                    <include>libmanifold.3.0.0.dylib</include>
+                    <include>libmanifold.3.4.0.dylib</include>
                 </includes>
             </resource>
             <resource>
@@ -104,7 +111,9 @@
                             </classOrPackageNames>
 
 
-                    <compilerProperties>                                <java.library.path>${project.build.directory}/../../build/src/</java.library.path>
+                    <compilerProperties>                                
+						<java.library.path>${project.build.directory}/../../build/src/</java.library.path>
+						<java.library.path>${project.build.directory}/../../build/extras/</java.library.path>
 
                     </compilerProperties>
                         </configuration>
