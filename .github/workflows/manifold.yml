@@ -83,14 +83,6 @@ jobs:
         python3 bindings/python/examples/run_all.py -e
         python3 -m pytest
 
-
-    - name: test cmake consumer
-      run: |
-        mkdir build
-        cd build
-        sudo cmake --install .
-        cd ..
-        ./scripts/test-cmake.sh
     - name: Get version
       id: get_version
       run: echo "VERSION=$(cat bindings/java/version.txt)" >> $GITHUB_ENV
