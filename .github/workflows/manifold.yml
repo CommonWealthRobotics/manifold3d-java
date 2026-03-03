@@ -193,6 +193,11 @@ jobs:
       with:
         name: manifold_java_bindings_mac_${{matrix.parallel_backend}}_${{env.JAVA_PACKAGE_VERSION}}
         path: bindings/java/target/*.jar
+    - name: Find Libs
+      if: failure() # This step will run only if the previous steps failed
+      run: |
+        find . -name "*.dylib"
+      shell: bash
     - name: Upload Surefire Reports
       if: failure() # This step will run only if the previous steps failed
       uses: actions/upload-artifact@v4  # updated from v3
