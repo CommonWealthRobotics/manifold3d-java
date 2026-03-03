@@ -33,8 +33,8 @@ import org.bytedeco.javacpp.*;
 import org.bytedeco.javacpp.annotation.*;
 
 @Platform(compiler = "cpp17", include = {"manifold/manifold.h", "../extras/meshIO.h"},
-          linkpath = { LibraryPaths.MANIFOLD_LIB_DIR },
-          link = { "manifold" })
+          linkpath = { LibraryPaths.MANIFOLD_LIB_DIR,LibraryPaths.MESHIO_LIB_DIR },
+          link = { "manifold","meshIO" })
 @Namespace("manifold")
 public class Manifold extends Pointer {
     static {
@@ -43,11 +43,6 @@ public class Manifold extends Pointer {
         if (osName.contains("linux")) {
             try {
                 System.load(Loader.extractResource("/libmanifold.so", null, "libmanifold", ".so").getAbsolutePath());
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-            try {
-                System.load(Loader.extractResource("/libmeshIO.so", null, "libmeshIO", ".so").getAbsolutePath());
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
