@@ -14,8 +14,8 @@ import manifold3d.pub.Polygons;
 
 @Platform(compiler = "cpp17",
           include = { "manifold/cross_section.h" },
-          linkpath = { LibraryPaths.MANIFOLD_LIB_DIR },
-          link = { "manifold" })
+        		  linkpath = { LibraryPaths.MANIFOLD_LIB_DIR,LibraryPaths.MESHIO_LIB_DIR }, 
+        		  link = { "manifold","meshIO" })
 @Namespace("manifold")
 public class CrossSection extends Pointer {
     static { Loader.load(); }

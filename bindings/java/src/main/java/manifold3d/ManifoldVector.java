@@ -15,8 +15,8 @@ import java.util.NoSuchElementException;
 
 @Platform(compiler = "cpp17",
           include = {"manifold/manifold.h", "<vector>"},
-          linkpath = { LibraryPaths.MANIFOLD_LIB_DIR },
-          link = { "manifold" })
+        		  linkpath = { LibraryPaths.MANIFOLD_LIB_DIR,LibraryPaths.MESHIO_LIB_DIR }, 
+        		  link = { "manifold","meshIO" })
 @Name("std::vector<manifold::Manifold>")
 public class ManifoldVector extends Pointer implements Iterable<Manifold>  {
     static {

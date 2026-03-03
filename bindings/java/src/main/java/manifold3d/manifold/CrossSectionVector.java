@@ -13,8 +13,8 @@ import java.util.NoSuchElementException;
 
 @Platform(compiler = "cpp17",
           include = {"manifold/manifold.h", "manifold/cross_section.h", "<vector>"},
-          linkpath = { LibraryPaths.MANIFOLD_LIB_DIR },
-          link = { "manifold" })
+        		  linkpath = { LibraryPaths.MANIFOLD_LIB_DIR,LibraryPaths.MESHIO_LIB_DIR }, 
+        		  link = { "manifold","meshIO" })
 @Name("std::vector<manifold::CrossSection>")
 public class CrossSectionVector extends Pointer implements Iterable<CrossSection> {
     static { Loader.load(); }

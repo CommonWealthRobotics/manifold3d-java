@@ -8,8 +8,8 @@ import manifold3d.UIntVector;
 import manifold3d.FloatVector;
 
 @Platform(compiler = "cpp17", include = { "manifold/manifold.h", "../extras/meshIO.h" },
-          linkpath = { LibraryPaths.MANIFOLD_LIB_DIR },
-          link = { "manifold" })
+linkpath = { LibraryPaths.MANIFOLD_LIB_DIR,LibraryPaths.MESHIO_LIB_DIR }, 
+link = { "manifold","meshIO" })
 @Namespace("manifold")
 public class MeshGL extends Pointer {
     static { Loader.load(); }
