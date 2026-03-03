@@ -18,7 +18,7 @@ jobs:
     strategy:
       matrix:
         cuda_support: [OFF]
-        parallel_backend: [NONE, TBB]
+        parallel_backend: [NONE]
     runs-on: ubuntu-22.04
     if: github.event.pull_request.draft == false || startsWith(github.ref, 'refs/tags/')
     outputs:
@@ -128,7 +128,7 @@ jobs:
     timeout-minutes: 30
     strategy:
       matrix:
-        parallel_backend: [NONE, TBB]
+        parallel_backend: [NONE]
     runs-on: macos-14
     if: github.event.pull_request.draft == false || startsWith(github.ref, 'refs/tags/')
     steps:
@@ -242,8 +242,7 @@ jobs:
       run: |
         VERSION=$(cat bindings/java/version.txt)
         linux_jar_file=linux-jar/manifold3d-$VERSION-linux-x86_64.jar
-        linux_tbb_jar_file=linux-tbb-jar/manifold3d-$VERSION-linux-TBB-x86_64.jar
-        mac_tbb_jar_file=mac-tbb-jar/manifold3d-$VERSION-mac-TBB-x86_64.jar
+        mac_jar_file=mac-jar/manifold3d-$VERSION-mac-x86_64.jar
 
         mvn versions:set -DnewVersion=$VERSION --file bindings/java/pom.xml
         mvn deploy:deploy-file \
@@ -257,7 +256,7 @@ jobs:
           -Dfile=$linux_tbb_jar_file \
           -Dclassifier=linux-TBB-x86_64 \
           -Dfiles=$mac_tbb_jar_file,$linux_jar_file \
-          -Dclassifiers=mac-TBB-x86_64,linux-x86_64 \
+          -Dclassifiers=mac-x86_64,linux-x86_64 \
           -Dtypes=jar,jar \
           --settings=bindings/java/settings.xml
       env:
