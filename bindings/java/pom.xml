@@ -70,15 +70,6 @@
                     <include>manifold.dll</include>
                 </includes>
             </resource>
-            <resource>
-			    <directory>../../build/bindings/c/</directory>
-			    <includes>
-		        <include>libmanifoldc.dylib</include>
-		        <include>libmanifoldc.3.dylib</include>
-		        <include>libmanifoldc.3.4.0.dylib</include>
-		        <include>libmanifoldc.so</include>
-		    </includes>
-			</resource>
         </resources>
         <plugins>
 		  <plugin>
@@ -96,7 +87,7 @@
 		            <includePath>../../build/_deps/freetype2-src/include</includePath>
 		            <includePath>../../src/</includePath>
 		        </includePaths>
-		        <preload>manifold:meshIO</preload>
+					<preload>manifold3d.manifold.MeshGL:manifold:meshIO</preload>
 		        <copyLibs>true</copyLibs>
 		    </configuration>
 		    <executions>
