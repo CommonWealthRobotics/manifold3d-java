@@ -247,10 +247,10 @@ jobs:
       shell: bash
       run: |
         VERSION=$(cat bindings/java/version.txt)
-		find linux-jar -name "*.class" -delete
-		find mac-jar -name "*.class" -delete
-		cp -r linux-jar/. ./bindings/java/target/classes/
-		cp -r mac-jar/. ./bindings/java/target/classes/
+        find linux-jar -name "*.class" -delete
+        find mac-jar -name "*.class" -delete
+        cp -r linux-jar/. ./bindings/java/target/classes/
+        cp -r mac-jar/. ./bindings/java/target/classes/
         mvn versions:set -DnewVersion=$VERSION --file bindings/java/pom.xml
         mvn package -Dos.classifier=cross-platform-$VERSION 
         find . -name "*.jar"
