@@ -245,7 +245,7 @@ jobs:
         name: manifold_java_bindings_mac_${{env.VERSION}}
         path: mac-jar
 
-    - name: Deploy Jars
+    - name: Setup libraries
       shell: bash
       run: |
         VERSION=$(cat bindings/java/version.txt)
@@ -258,6 +258,10 @@ jobs:
         find . -name "*.jar"
         find . -name "*.dylib"
         find . -name "*.so"
+    - name: Deploy Jars
+      shell: bash
+      run: |
+        VERSION=$(cat bindings/java/version.txt)
         linux_jar_file=./bindings/java/target/manifold3d-cross-platform-$VERSION.jar
         mvn deploy:deploy-file \
           -DpomFile=bindings/java/pom.xml \
@@ -276,3 +280,23 @@ jobs:
       env:
         CLOJARS_PASSPHRASE: ${{ secrets.CLOJARS_PASSPHRASE }}
         CLOJARS_TOKEN: ${{ secrets.CLOJARS_TOKEN }}
+    - name: Make Release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: v${{ env.VERSION }}
+        release_name: Release v${{ env.VERSION }}
+        draft: false
+        prerelease: false
+
+    - name: Upload Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./bindings/java/target/manifold3d-cross-platform-${{ env.VERSION }}.jar
+        asset_name: manifold3d-cross-platform-${{ env.VERSION }}.jar
+        asset_content_type: application/java-archive
+    
