@@ -90,6 +90,7 @@ jobs:
 
         mvn versions:set -DnewVersion=$(cat version.txt) --file pom.xml
         mvn package -Dos.classifier=linux$BACKEND-x86_64
+        find  ./bindings/java/target/classes/ -name "*.class" -delete
     # - name: Test ${{matrix.parallel_backend}} with CUDA ${{matrix.cuda_support}}
     #   # note that the test for CUDA backend does not really test CUDA, as we
     #   # don't have CUDA GPU on GitHub Action
@@ -183,7 +184,8 @@ jobs:
         JAVA_PACKAGE_VERSION=$(cat version.txt)
         echo "JAVA_PACKAGE_VERSION=$JAVA_PACKAGE_VERSION" >> $GITHUB_ENV
         mvn versions:set -DnewVersion=$JAVA_PACKAGE_VERSION --file pom.xml
-        mvn package -Dos.classifier=mac-arm46
+        mvn package -Dos.classifier=mac-arm64
+        find  ./bindings/java/target/classes/ -name "*.class" -delete
     # - name: Test
     #   run: |
     #     cd build/test
@@ -247,8 +249,7 @@ jobs:
       shell: bash
       run: |
         VERSION=$(cat bindings/java/version.txt)
-        find linux-jar -name "*.class" -delete
-        find mac-jar -name "*.class" -delete
+        
         mkdir -p ./bindings/java/target/classes/
         cp -r linux-jar/. ./bindings/java/target/classes/
         cp -r mac-jar/. ./bindings/java/target/classes/
