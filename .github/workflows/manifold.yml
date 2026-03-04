@@ -214,7 +214,7 @@ jobs:
   deploy_jars:
     runs-on: ubuntu-latest
     needs: [build_linux, build_mac]
-    if: github.event.pull_request.draft == false && ${{needs.build.outputs.java_package_version_changed}} == 'true'
+    if: github.event.pull_request.draft == false && ${{needs.build_linux.outputs.java_package_version_changed}} == 'true'
     steps:
     - uses: actions/checkout@v3
       with:
