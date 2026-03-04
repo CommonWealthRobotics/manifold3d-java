@@ -253,8 +253,6 @@ jobs:
         mkdir -p ./bindings/java/target/classes/
         cp -r linux-jar/. ./bindings/java/target/classes/
         cp -r mac-jar/. ./bindings/java/target/classes/
-        mvn versions:set -DnewVersion=$VERSION --file bindings/java/pom.xml
-        mvn package -Dos.classifier=cross-platform-$VERSION 
         find . -name "*.jar"
         find . -name "*.dylib"
         find . -name "*.so"
@@ -263,6 +261,8 @@ jobs:
       run: |
         VERSION=$(cat bindings/java/version.txt)
         linux_jar_file=./bindings/java/target/manifold3d-cross-platform-$VERSION.jar
+        mvn versions:set -DnewVersion=$VERSION --file bindings/java/pom.xml
+        mvn package -Dos.classifier=cross-platform-$VERSION 
         mvn deploy:deploy-file \
           -DpomFile=bindings/java/pom.xml \
           -DrepositoryId=clojars \
