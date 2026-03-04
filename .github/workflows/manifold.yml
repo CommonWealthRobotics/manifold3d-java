@@ -216,6 +216,37 @@ jobs:
     needs: [build, build_mac]
     if: github.event.pull_request.draft == false && ${{needs.build.outputs.java_package_version_changed}} == 'true'
     steps:
+    - name: Install dependencies
+      run: |
+        apt-get -y update
+        DEBIAN_FRONTEND=noninteractive apt install -y libomp-dev libassimp-dev git libtbb-dev pkg-config libpython3-dev python3 python3-distutils python3-pip lcov
+        pip install trimesh
+    - uses: actions/checkout@v3
+      with:
+        submodules: recursive
+        fetch-depth: 2
+    - uses: jwlawson/actions-setup-cmake@v1.12
+    - name: Setup Java
+      uses: actions/setup-java@v2
+      with:
+        java-version: '17'
+        distribution: 'adopt'
+    - name: Install Maven
+      run: |
+        apt-get update
+        apt-get install -y maven
+    - name: Cache Maven packages
+      uses: actions/cache@v3
+      with:
+        path: ~/.m2
+        key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+        restore-keys: ${{ runner.os }}-m2
+    - name: Build C code
+      run: |
+        mkdir build
+        cd build
+        cmake -DCMAKE_BUILD_TYPE=Release -DASSIMP_ENABLE=ON -DBUILD_SHARED_LIBS=ON -DMANIFOLD_DEBUG=ON -DMANIFOLD_EXPORT=ON -DMANIFOLD_PAR=${{matrix.parallel_backend}} -DCMAKE_POLICY_VERSION_MINIMUM=3.5 .. && make
+ 
     - name: Checkout Code
       uses: actions/checkout@v3
       with:
@@ -251,17 +282,19 @@ jobs:
         VERSION=$(cat bindings/java/version.txt)
         
         mkdir -p ./bindings/java/target/classes/
-        cp -r linux-jar/. ./bindings/java/target/classes/
-        cp -r mac-jar/. ./bindings/java/target/classes/
+        cp -r linux-jar/* ./bindings/java/target/classes/
+        cp -r mac-jar/* ./bindings/java/target/classes/
         find . -name "*.jar"
         find . -name "*.dylib"
         find . -name "*.so"
+        
     - name: Deploy Jars
       shell: bash
       run: |
-        VERSION=$(cat bindings/java/version.txt)
+        VERSION=$(cat ./bindings/java/version.txt)
         linux_jar_file=./bindings/java/target/manifold3d-cross-platform-$VERSION.jar
-        mvn versions:set -DnewVersion=$VERSION --file bindings/java/pom.xml
+        cd ./bindings/java
+        mvn versions:set -DnewVersion=$VERSION --file pom.xml
         mvn package -Dos.classifier=cross-platform-$VERSION 
         mvn deploy:deploy-file \
           -DpomFile=bindings/java/pom.xml \
