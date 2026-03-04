@@ -20,35 +20,7 @@ import java.util.NoSuchElementException;
 @Name("std::vector<manifold::Manifold>")
 public class ManifoldVector extends Pointer implements Iterable<Manifold>  {
     static {
-
-        String osName = System.getProperty("os.name").toLowerCase();
-        if (osName.contains("linux")) {
-            try {
-                System.load(Loader.extractResource("/libmanifold.so", null, "libmanifold", ".so").getAbsolutePath());
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        } else if (osName.contains("windows")) {
-            try {
-                System.out.println("Loading manifold");
-                System.load(Loader.extractResource("/manifold.dll", null, "manifold", ".dll").getAbsolutePath());
-                System.out.println("Finished Loading.");
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        } else if (osName.contains("mac")) {
-            try {
-                System.out.println("Loading Manifold");
-                System.load(Loader.extractResource("/libmanifold.3.0.0.dylib", null, "libmanifold", ".dylib").getAbsolutePath());
-                System.out.println("Finished Loading.");
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        } else {
-            throw new UnsupportedOperationException("Unsupported operating system: " + osName);
-        }
-
-        Loader.load();
+    	Manifold.loadAll();
     }
 
     private int current = 0;

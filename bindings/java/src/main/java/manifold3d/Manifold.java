@@ -37,8 +37,15 @@ import org.bytedeco.javacpp.annotation.*;
           link = { "manifold","meshIO" })
 @Namespace("manifold")
 public class Manifold extends Pointer {
+	private static loaded=false;
     static {
-
+    	loadAll();
+    }
+    
+    public static void loadAll() {
+    	if(loaded)
+    		return;
+    	loaded=true;
         String osName = System.getProperty("os.name").toLowerCase();
         if (osName.contains("linux")) {
             try {
@@ -59,8 +66,8 @@ public class Manifold extends Pointer {
         } else if (osName.contains("mac")) {
             try {
                 System.out.println("Loading Manifold");
-                System.load(Loader.extractResource("/manifold3d/manifold/macosx-arm64/libmanifold.dylib", null, "libmanifold", ".dylib").getAbsolutePath());
-                //System.load(Loader.extractResource("/libmanifold.3.4.0.dylib", null, "libmanifold", ".dylib").getAbsolutePath());                System.out.println("Finished Loading.");
+                //System.load(Loader.extractResource("/manifold3d/manifold/macosx-arm64/libmanifold.dylib", null, "libmanifold", ".dylib").getAbsolutePath());
+                System.load(Loader.extractResource("/libmanifold.3.4.0.dylib", null, "libmanifold", ".dylib").getAbsolutePath());                System.out.println("Finished Loading.");
             } catch (IOException e) {
             	e.printStackTrace();
                 //throw new RuntimeException(e);
@@ -68,7 +75,6 @@ public class Manifold extends Pointer {
         } else {
             throw new UnsupportedOperationException("Unsupported operating system: " + osName);
         }
-
         Loader.load();
     }
 
