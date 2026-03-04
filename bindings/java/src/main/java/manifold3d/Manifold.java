@@ -44,7 +44,8 @@ public class Manifold extends Pointer {
             try {
                 System.load(Loader.extractResource("/libmanifold.so", null, "libmanifold", ".so").getAbsolutePath());
             } catch (IOException e) {
-                throw new RuntimeException(e);
+            	e.printStackTrace();
+                //throw new RuntimeException(e);
             }
         } else if (osName.contains("windows")) {
             try {
@@ -52,14 +53,17 @@ public class Manifold extends Pointer {
                 System.load(Loader.extractResource("/manifold.dll", null, "manifold", ".dll").getAbsolutePath());
                 System.out.println("Finished Loading.");
             } catch (IOException e) {
-                throw new RuntimeException(e);
+            	e.printStackTrace();
+                //throw new RuntimeException(e);
             }
         } else if (osName.contains("mac")) {
             try {
                 System.out.println("Loading Manifold");
-                System.load(Loader.extractResource("/libmanifold.3.4.0.dylib", null, "libmanifold", ".dylib").getAbsolutePath());                System.out.println("Finished Loading.");
+                System.load(Loader.extractResource("/manifold3d/manifold/macosx-arm64/libmanifold.dylib", null, "libmanifold", ".dylib").getAbsolutePath());
+                //System.load(Loader.extractResource("/libmanifold.3.4.0.dylib", null, "libmanifold", ".dylib").getAbsolutePath());                System.out.println("Finished Loading.");
             } catch (IOException e) {
-                throw new RuntimeException(e);
+            	e.printStackTrace();
+                //throw new RuntimeException(e);
             }
         } else {
             throw new UnsupportedOperationException("Unsupported operating system: " + osName);
