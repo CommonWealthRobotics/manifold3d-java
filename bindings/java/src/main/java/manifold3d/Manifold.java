@@ -37,46 +37,11 @@ import org.bytedeco.javacpp.annotation.*;
           link = { "manifold","meshIO" })
 @Namespace("manifold")
 public class Manifold extends Pointer {
-	private static loaded=false;
     static {
-    	loadAll();
+    	NativeLoader.loadAll();
     }
     
-    public static void loadAll() {
-    	if(loaded)
-    		return;
-    	loaded=true;
-        String osName = System.getProperty("os.name").toLowerCase();
-        if (osName.contains("linux")) {
-            try {
-                System.load(Loader.extractResource("/libmanifold.so", null, "libmanifold", ".so").getAbsolutePath());
-            } catch (IOException e) {
-            	e.printStackTrace();
-                //throw new RuntimeException(e);
-            }
-        } else if (osName.contains("windows")) {
-            try {
-                System.out.println("Loading manifold");
-                System.load(Loader.extractResource("/manifold.dll", null, "manifold", ".dll").getAbsolutePath());
-                System.out.println("Finished Loading.");
-            } catch (IOException e) {
-            	e.printStackTrace();
-                //throw new RuntimeException(e);
-            }
-        } else if (osName.contains("mac")) {
-            try {
-                System.out.println("Loading Manifold");
-                //System.load(Loader.extractResource("/manifold3d/manifold/macosx-arm64/libmanifold.dylib", null, "libmanifold", ".dylib").getAbsolutePath());
-                System.load(Loader.extractResource("/libmanifold.3.4.0.dylib", null, "libmanifold", ".dylib").getAbsolutePath());                System.out.println("Finished Loading.");
-            } catch (IOException e) {
-            	e.printStackTrace();
-                //throw new RuntimeException(e);
-            }
-        } else {
-            throw new UnsupportedOperationException("Unsupported operating system: " + osName);
-        }
-        Loader.load();
-    }
+
 
     // Constructors and destructor
     public Manifold() { allocate(); }

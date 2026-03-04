@@ -20,7 +20,7 @@ import java.util.NoSuchElementException;
 @Name("std::vector<manifold::Manifold>")
 public class ManifoldVector extends Pointer implements Iterable<Manifold>  {
     static {
-    	Manifold.loadAll();
+    	NativeLoader.loadAll();
     }
 
     private int current = 0;
