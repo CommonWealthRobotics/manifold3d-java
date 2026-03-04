@@ -135,3 +135,4 @@ CMakeSettings.json
 # Benchmark stl files
 extras/ember_tests/testfiles/raw_meshes
 bindings/java/target
+/manifold_java_bindings_*.zip
