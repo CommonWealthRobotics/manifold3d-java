@@ -249,6 +249,7 @@ jobs:
         VERSION=$(cat bindings/java/version.txt)
         find linux-jar -name "*.class" -delete
         find mac-jar -name "*.class" -delete
+        mkdir -p ./bindings/java/target/classes/
         cp -r linux-jar/. ./bindings/java/target/classes/
         cp -r mac-jar/. ./bindings/java/target/classes/
         mvn versions:set -DnewVersion=$VERSION --file bindings/java/pom.xml
