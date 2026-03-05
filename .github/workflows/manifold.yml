@@ -242,7 +242,7 @@ jobs:
         mkdir build
         cd build
         cmake -DCMAKE_BUILD_TYPE=Release -DASSIMP_ENABLE=ON -DBUILD_SHARED_LIBS=ON -DMANIFOLD_DEBUG=ON -DMANIFOLD_EXPORT=ON -DCMAKE_POLICY_VERSION_MINIMUM=3.5 .. && make
-
+        cd ..
     - name: Get version
       id: get_version
       run: echo "VERSION=$(cat bindings/java/version.txt)" >> $GITHUB_ENV
@@ -267,7 +267,7 @@ jobs:
     - name: Make Jar
       shell: bash
       run: |
-        bash ./scripts/makeJar.sh
+        bash scripts/makeJars.sh
     - name: Upload artifact
       uses: actions/upload-artifact@v4  # updated from v3
       with:
@@ -276,7 +276,7 @@ jobs:
     - name: Deploy Jar
       shell: bash
       run: |
-        bash ./scripts/clojar.sh
+        bash scripts/clojar.sh
       env:
         CLOJARS_USERNAME: ${{ secrets.CLOJARS_USERNAME }}
         CLOJARS_TOKEN: ${{ secrets.CLOJARS_TOKEN }}
