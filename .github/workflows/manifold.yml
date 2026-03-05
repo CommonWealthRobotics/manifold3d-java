@@ -277,7 +277,7 @@ jobs:
     - name: Upload artifact
       uses: actions/upload-artifact@v4  # updated from v3
       with:
-        name: manifold_java_bindings_linux_${{env.VERSION}}
+        name: manifold3d-cross-platform-${{env.VERSION}}.jar
         path: ./bindings/java/target/manifold3d-cross-platform-${{env.VERSION}}.jar
     - name: Deploy Jar
       shell: bash
