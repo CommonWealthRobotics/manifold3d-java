@@ -278,10 +278,15 @@ jobs:
         mvn package -Dos.classifier=linux-x86_64
         cd ../../
         find . -name "*.jar"
+        mv ./bindings/java/target/manifold3d-*.jar ${{env.linux_jar_file}}
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4  # updated from v3
+      with:
+        name: manifold_java_bindings_linux_${{env.VERSION}}
+        path: ./bindings/java/target/manifold3d-cross-platform-$VERSION.jar
     - name: Deploy Jar
       shell: bash
       run: |
-        mv ./bindings/java/target/manifold3d-*.jar ${{env.linux_jar_file}}
         mvn deploy:deploy-file \
           -DpomFile=bindings/java/pom.xml \
           -DrepositoryId=clojars \
@@ -299,9 +304,5 @@ jobs:
       env:
         CLOJARS_PASSPHRASE: ${{ secrets.CLOJARS_PASSPHRASE }}
         CLOJARS_TOKEN: ${{ secrets.CLOJARS_TOKEN }}
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4  # updated from v3
-      with:
-        name: manifold_java_bindings_linux_${{env.VERSION}}
-        path: ./bindings/java/target/manifold3d-cross-platform-$VERSION.jar
+
     

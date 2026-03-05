@@ -3,9 +3,8 @@
   <servers>
     <server>
       <id>clojars</id>
-      <username>cartesiantheatrics</username>
-      <passphrase>${env.CLOJARS_PASSPHRASE}</passphrase>
-      <password>${env.CLOJARS_TOKEN}</password>
+      <username>${env.CLOJARS_PASSPHRASE}</username>
+      <password>${env.CLOJARS_PASSPHRASE}</password>
     </server>
   </servers>
 </settings>
