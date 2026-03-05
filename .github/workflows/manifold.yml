@@ -295,7 +295,7 @@ jobs:
           -Dclassifier=cross-platform-$VERSION  \
           --settings=bindings/java/settings.xml
       env:
-        CLOJARS_PASSPHRASE: ${{ secrets.CLOJARS_PASSPHRASE }}
+        CLOJARS_USERNAME: ${{ secrets.CLOJARS_USERNAME }}
         CLOJARS_TOKEN: ${{ secrets.CLOJARS_TOKEN }}
 
     

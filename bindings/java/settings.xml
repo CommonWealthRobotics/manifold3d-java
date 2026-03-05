@@ -3,7 +3,7 @@
   <servers>
     <server>
       <id>clojars</id>
-      <username>${env.CLOJARS_PASSPHRASE}</username>
+      <username>${env.CLOJARS_USERNAME}</username>
       <password>${env.CLOJARS_TOKEN}</password>
     </server>
   </servers>
