@@ -220,7 +220,7 @@ jobs:
     - name: Install dependencies
       run: |
         apt-get -y update
-        apt install -y libomp-dev libassimp-dev git libtbb-dev pkg-config  lcov
+        DEBIAN_FRONTEND=noninteractive apt install -y libomp-dev libassimp-dev git libtbb-dev pkg-config  lcov zlib1g-dev
     - uses: actions/checkout@v3
       with:
         submodules: recursive
