@@ -272,7 +272,7 @@ jobs:
       shell: bash
       run: |
         VERSION=$(cat ./bindings/java/version.txt)
-        linux_jar_file=./bindings/java/target/manifold3d-cross-platform-$VERSION.jar
+        echo "linux_jar_file=./bindings/java/target/manifold3d-cross-platform-$VERSION.jar" >> $GITHUB_ENV
         cd ./bindings/java
         mvn versions:set -DnewVersion=$VERSION --file pom.xml
         mvn package -Dos.classifier=linux-x86_64
@@ -281,7 +281,7 @@ jobs:
     - name: Deploy Jar
       shell: bash
       run: |
-        mv ./bindings/java/target/manifold3d-*.jar $linux_jar_file
+        mv ./bindings/java/target/manifold3d-*.jar ${{env.linux_jar_file}}
         mvn deploy:deploy-file \
           -DpomFile=bindings/java/pom.xml \
           -DrepositoryId=clojars \
@@ -290,7 +290,7 @@ jobs:
           -DartifactId=manifold3d \
           -Dversion=$VERSION \
           -Dpackaging=jar \
-          -Dfile=$linux_jar_file \
+          -Dfile=${{env.linux_jar_file}} \
           -Dclassifier=cross-platform-$VERSION  \
           -Dfiles=$linux_jar_file \
           -Dclassifiers=cross-platform-$VERSION  \
