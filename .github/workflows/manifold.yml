@@ -273,12 +273,12 @@ jobs:
         mvn package -Dos.classifier=linux-x86_64
         cd ../../
         find . -name "*.jar"
-        mv ./bindings/java/target/manifold3d-*.jar ./bindings/java/target/manifold3d-cross-platform-$VERSION.jar
+        mv ./bindings/java/target/manifold3d-*.jar ./bindings/java/target/manifold3d-$VERSION.jar
     - name: Upload artifact
       uses: actions/upload-artifact@v4  # updated from v3
       with:
-        name: manifold3d-cross-platform-${{env.VERSION}}.jar
-        path: ./bindings/java/target/manifold3d-cross-platform-${{env.VERSION}}.jar
+        name: manifold3d-${{env.VERSION}}.jar
+        path: ./bindings/java/target/manifold3d-${{env.VERSION}}.jar
     - name: Deploy Jar
       shell: bash
       run: |
@@ -291,7 +291,7 @@ jobs:
           -DartifactId=manifold3d \
           -Dversion=$VERSION \
           -Dpackaging=jar \
-          -Dfile=./bindings/java/target/manifold3d-cross-platform-${{env.VERSION}}.jar \
+          -Dfile=./bindings/java/target/manifold3d-${{env.VERSION}}.jar \
           -Dclassifier=cross-platform-$VERSION  \
           --settings=bindings/java/settings.xml
       env:
