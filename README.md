@@ -295,7 +295,18 @@ For more detailed documentation, please refer to the C++ API.
 
 Unofficial java bindings are currently maintained in [a fork](https://github.com/SovereignShop/manifold).
 
-There is also a Clojure [library](https://github.com/SovereignShop/clj-manifold3d).
+to build the java jars run:
+
+```
+bash scripts/makeJars.sh
+```
+
+To publish to Clojar
+
+```
+bash scripts/makeJars.sh && bash scripts/clojar.sh
+```
+
 
 ### Windows Shenanigans
 
