@@ -268,14 +268,12 @@ jobs:
       shell: bash
       run: |
         VERSION=$(cat ./bindings/java/version.txt)
-        linux_jar_file=./bindings/java/target/manifold3d-cross-platform-$VERSION.jar
-        echo "$linux_jar_file" >> $GITHUB_ENV
         cd ./bindings/java
         mvn versions:set -DnewVersion=$VERSION --file pom.xml
         mvn package -Dos.classifier=linux-x86_64
         cd ../../
         find . -name "*.jar"
-        mv ./bindings/java/target/manifold3d-*.jar $linux_jar_file
+        mv ./bindings/java/target/manifold3d-*.jar ./bindings/java/target/manifold3d-cross-platform-$VERSION.jar
     - name: Upload artifact
       uses: actions/upload-artifact@v4  # updated from v3
       with:
@@ -284,16 +282,15 @@ jobs:
     - name: Deploy Jar
       shell: bash
       run: |
-        linux_jar_file=${{env.linux_jar_file}} 
         mvn deploy:deploy-file \
-          -DpomFile=bindings/java/pom.xml \
+          -DpomFile=./bindings/java/pom.xml \
           -DrepositoryId=clojars \
           -Durl=https://clojars.org/repo \
           -DgroupId=com.github.madhephaestus \
           -DartifactId=manifold3d \
           -Dversion=$VERSION \
           -Dpackaging=jar \
-          -Dfile=$linux_jar_file \
+          -Dfile=./bindings/java/target/manifold3d-cross-platform-$VERSION.jar \
           -Dclassifier=cross-platform-$VERSION  \
           --settings=bindings/java/settings.xml
       env:
