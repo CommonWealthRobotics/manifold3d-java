@@ -278,10 +278,11 @@ jobs:
       uses: actions/upload-artifact@v4  # updated from v3
       with:
         name: manifold_java_bindings_linux_${{env.VERSION}}
-        path: ./bindings/java/target/manifold3d-cross-platform-$VERSION.jar
+        path: ./bindings/java/target/manifold3d-cross-platform-${{env.VERSION}}.jar
     - name: Deploy Jar
       shell: bash
       run: |
+        VERSION=$(cat ./bindings/java/version.txt)
         mvn deploy:deploy-file \
           -DpomFile=./bindings/java/pom.xml \
           -DrepositoryId=clojars \
@@ -290,7 +291,7 @@ jobs:
           -DartifactId=manifold3d \
           -Dversion=$VERSION \
           -Dpackaging=jar \
-          -Dfile=./bindings/java/target/manifold3d-cross-platform-$VERSION.jar \
+          -Dfile=./bindings/java/target/manifold3d-cross-platform-${{env.VERSION}}.jar \
           -Dclassifier=cross-platform-$VERSION  \
           --settings=bindings/java/settings.xml
       env:
