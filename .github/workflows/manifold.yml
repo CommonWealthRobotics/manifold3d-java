@@ -219,8 +219,8 @@ jobs:
     steps:
     - name: Install dependencies
       run: |
-        sudo apt-get -y update
-        sudo apt install -y libomp-dev libassimp-dev git libtbb-dev pkg-config  lcov
+         apt-get -y update
+         apt install -y libomp-dev libassimp-dev git libtbb-dev pkg-config  lcov
         pip install trimesh
     - uses: actions/checkout@v3
       with:
@@ -246,8 +246,8 @@ jobs:
  
     - name: Install Maven
       run: |
-        sudo apt-get update
-        sudo apt-get install -y maven
+         apt-get update
+         apt-get install -y maven
     - name: Get version
       id: get_version
       run: echo "VERSION=$(cat bindings/java/version.txt)" >> $GITHUB_ENV
