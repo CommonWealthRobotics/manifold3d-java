@@ -17,3 +17,5 @@ cd bindings/java
 set -e
 mvn versions:set -DnewVersion=$(cat version.txt) --file pom.xml
 mvn package -Dos.classifier=linux-x86_64
+mv ./target/manifold3d-$VERSION-linux-x86_64.jar ./target/manifold3d-$VERSION.jar
+
