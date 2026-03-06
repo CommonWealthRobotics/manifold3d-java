@@ -36,7 +36,7 @@ Manifold has bindings to many other languages, some maintained in this repositor
 | C++ | vcpkg | [manifold](https://github.com/microsoft/vcpkg/tree/master/ports/manifold) | external |
 | TS/JS | npm | [manifold-3d](https://www.npmjs.com/package/manifold-3d) | internal |
 | Python | PyPI | [manifold3d](https://pypi.org/project/manifold3d/) | internal |
-| Java | N/A | [manifold](https://github.com/SovereignShop/manifold) | external |
+| Java | N/A | [manifold](https://github.com/CommonWealthRobotics/manifold3d-java) | external |
 | Clojure | N/A | [clj-manifold3d](https://github.com/SovereignShop/clj-manifold3d) | external |
 | C# | NuGet | [ManifoldNET](https://www.nuget.org/packages/ManifoldNET) | external |
 | Julia | Packages | [ManifoldBindings.jl](https://juliapackages.com/p/manifoldbindings) | external |
@@ -209,6 +209,10 @@ python binding documentation:
 ```
 
 For more detailed documentation, please refer to the C++ API.
+
+### Java
+
+[See the Java Readme](bindings/java/README.md)
 
 ### Windows Shenanigans
 
