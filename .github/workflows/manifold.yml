@@ -15,6 +15,7 @@ on:
 jobs:
 
   build_windows:
+    runs-on: windows-2019
     name: Windows (TBB:${{matrix.parallelization}}, SHARED:${{matrix.shared}})
     timeout-minutes: 30
     strategy:
