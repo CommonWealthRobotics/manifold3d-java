@@ -15,7 +15,6 @@ on:
 jobs:
 
   build_windows:
-    runs-on: windows-2019
     name: Windows (TBB:${{matrix.parallelization}}, SHARED:${{matrix.shared}})
     timeout-minutes: 30
     strategy:
@@ -34,7 +33,7 @@ jobs:
       run: |
         cmake . -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=${{matrix.shared}} -DMANIFOLD_STRICT=ON -DMANIFOLD_USE_BUILTIN_TBB=ON -DMANIFOLD_DEBUG=ON -DMANIFOLD_ASSERT=ON -DMANIFOLD_PAR=${{matrix.parallelization}} -A x64 -B build
         cd build
-        cmake --build . --target ALL_BUILD --config Release
+        cmake --build .  --config Release
     - name: Test dll location
       if: matrix.shared == 'ON'
       shell: bash
