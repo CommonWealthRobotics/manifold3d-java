@@ -135,7 +135,7 @@ jobs:
 
   deploy_jars:
     runs-on: ubuntu-latest
-    needs: [ build_mac,build_windows]
+    needs: [ build_mac]
     container:
       image: docker://nvidia/cuda:12.0.1-devel-ubuntu22.04
     steps:
