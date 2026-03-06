@@ -597,7 +597,6 @@ TEST(Manifold, Slice) {
   EXPECT_EQ(top.Area(), 0);
 }
 
-
 TEST(Manifold, SliceEmptyObject) {
   Manifold empty;
   EXPECT_TRUE(empty.IsEmpty());
@@ -1143,7 +1142,6 @@ TEST(Manifold, MergeRefine) {
   manifold = manifold.RefineToLength(1.0);
   EXPECT_NEAR(manifold.Volume(), 31.21, 0.01);
 }
-
 
 #ifdef MANIFOLD_DEBUG
 TEST(Manifold, OpenscadCrash) {
