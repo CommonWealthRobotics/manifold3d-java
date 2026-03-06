@@ -187,6 +187,22 @@ jobs:
       shell: bash
       run: |
         bash scripts/makeJars.sh
+    - name: Install Jar to local Maven repository
+      shell: bash
+      run: |
+        mvn install:install-file \
+          -Dfile=./bindings/java/target/manifold3d-${{env.VERSION}}.jar \
+          -DgroupId=com.github.madhephaestus \
+          -DartifactId=manifold3d \
+          -Dversion=${{env.VERSION}} \
+          -Dpackaging=jar \
+          -DlocalRepositoryPath=${HOME}/.m2/repository
+
+    - name: Cache local Maven repository with installed Jar
+      uses: actions/cache/save@v3
+      with:
+        path: ~/.m2/repository
+        key: ${{ runner.os }}-m2-with-manifold3d-${{env.VERSION}}
     - name: Upload artifact
       uses: actions/upload-artifact@v4  # updated from v3
       with:
@@ -200,5 +216,30 @@ jobs:
       env:
         CLOJARS_USERNAME: ${{ secrets.CLOJARS_USERNAME }}
         CLOJARS_TOKEN: ${{ secrets.CLOJARS_TOKEN }}
-
-    
+  test_linux_x86:
+    runs-on: ubuntu-latest
+    needs: [ deploy_jars ]
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        submodules: recursive
+        fetch-depth: 2
+    - name: Setup Java
+      uses: actions/setup-java@v2
+      with:
+        java-version: '21'
+        distribution: 'adopt'
+    - name: Install dependencies
+      run: |
+        sudo apt-get -y update
+        sudo apt install -y maven
+    - name: Get version
+      run: echo "VERSION=$(cat bindings/java/version.txt)" >> $GITHUB_ENV
+    - name: Restore Maven cache with manifold3d Jar
+      uses: actions/cache/restore@v3
+      with:
+        path: ~/.m2/repository
+        key: ${{ runner.os }}-m2-with-manifold3d-${{env.VERSION}}
+    - name: Run tests
+      run: mvn test
+      working-directory: bindings/java/manifold3dtest

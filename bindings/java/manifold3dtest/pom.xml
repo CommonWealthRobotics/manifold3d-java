@@ -15,7 +15,7 @@
     <dependency>
       <groupId>com.github.madhephaestus</groupId>
       <artifactId>manifold3d</artifactId>
-      <version>3.1.1</version>
+      <version>${env.VERSION}</version>
     </dependency>
     <dependency>
       <groupId>org.junit.jupiter</groupId>
