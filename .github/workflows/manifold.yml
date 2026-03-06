@@ -19,7 +19,7 @@ jobs:
     timeout-minutes: 30
     strategy:
       matrix:
-        parallelization: [ ON]
+        parallelization: [ NONE]
         shared: [ ON]
     runs-on: windows-2025
     steps:
