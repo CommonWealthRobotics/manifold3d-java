@@ -240,6 +240,9 @@ jobs:
       with:
         path: ~/.m2/repository
         key: ${{ runner.os }}-m2-with-manifold3d-${{env.VERSION}}
+    - name: Find Deps
+      run: |
+        find ~/.m2/repository/ -name "*.jar"
     - name: Run tests
       run: mvn test
       working-directory: bindings/java/manifold3dtest
