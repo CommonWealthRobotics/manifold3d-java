@@ -13,6 +13,13 @@
         <maven.compiler.release>21</maven.compiler.release>
     </properties>
 
+    <distributionManagement>
+        <repository>
+            <id>clojars</id>
+            <name>Clojars repository</name>
+            <url>https://clojars.org/repo</url>
+        </repository>
+    </distributionManagement>
     <build>
         <plugins>
             <plugin>
