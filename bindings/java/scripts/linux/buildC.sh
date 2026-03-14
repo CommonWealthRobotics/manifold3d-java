@@ -12,5 +12,6 @@ echo "Build Done! Now copying the binaries into the Java Build..."
 echo "Current directory is $PWD"
 ls -al .
 ls -al ./build/src/*
+mkdir -p ./bindings/java/src/main/resources/manifold3d/natives/linux-x86_64/
 cp ./build/src/libmanifold.so ./bindings/java/src/main/resources/manifold3d/natives/linux-x86_64/
 cp ./build/bindings/c/libmanifoldc.so ./bindings/java/src/main/resources/manifold3d/natives/linux-x86_64/
