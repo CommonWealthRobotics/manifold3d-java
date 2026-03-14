@@ -1,4 +1,4 @@
-package com.cad;
+package com.cadoodlecad.manifold;
 
 import java.lang.foreign.*;
 import java.lang.invoke.MethodHandle;

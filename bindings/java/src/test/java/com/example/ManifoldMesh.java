@@ -1,6 +1,9 @@
-package com.cad;
+package com.example;
 
 import java.lang.foreign.MemorySegment;
+
+import com.cadoodlecad.manifold.ManifoldBindings;
+
 import javafx.scene.shape.TriangleMesh;
 
 public class ManifoldMesh {
