@@ -1,6 +1,5 @@
 #!/bin/bash
 
-VERSION=$(git describe --tags --abbrev=0)
 #rm -rf build
 mkdir build
 cd build

@@ -430,7 +430,11 @@ jobs:
         with:
           name: native-libs
           path: bindings/java/src/main/resources/manifold3d/natives/
-      - name: Install dependencies
+      - name: List shared libraries
         run: |
           ls -al bindings/java/src/main/resources/manifold3d/natives/
+          ls -al bindings/java/src/main/resources/manifold3d/natives/linux-x86_64
+      - name: Build Jar
+        run: |
+          bash bindings/java/scripts/findVersion.sh
       
