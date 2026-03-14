@@ -41,4 +41,8 @@
         </plugins>
     </build>
 
+    <scm>
+    	<url>https://github.com/CommonWealthRobotics/manifold3d-java</url>
+    	<developerConnection>Kevin Harrington</developerConnection>
+    </scm>
 </project>
