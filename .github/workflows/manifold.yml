@@ -396,21 +396,10 @@ jobs:
   build_linux_java:
     name: JAVA Build
     timeout-minutes: 45
-    strategy:
-      matrix:
-        cross_section: [ON]
-        parallelization: [ ON]
-        os: [ubuntu-24.04]
-        gcc: [ 14]
-        include:
-          - cross_section: OFF
-            parallelization: ON
-            os: ubuntu-24.04
-            gcc: 14
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-24.04
     env:
-      CC: gcc-${{ matrix.gcc }}
-      CXX: g++-${{ matrix.gcc }}
+      CC: gcc-14
+      CXX: g++-14
     steps:
     - uses: actions/setup-python@v5
       with:
@@ -424,7 +413,7 @@ jobs:
     - uses: jwlawson/actions-setup-cmake@v2
       with:
         cmake-version: 4.0.2
-    - name: Build ${{matrix.parallelization}}
+    - name: Build With parallelization
       run: |
         bash bindings/java/scripts/linux/buildC.sh
     - name: Upload native libraries
