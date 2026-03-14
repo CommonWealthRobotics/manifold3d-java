@@ -394,7 +394,7 @@ jobs:
     - uses: DeterminateSystems/nix-installer-action@main
     - run: nix build -L '.?submodules=1#${{matrix.variant}}'
   build_linux_java:
-    name: GCC ${{matrix.gcc}} (CrossSection:${{matrix.cross_section}}, TBB:${{matrix.parallelization}})
+    name: JAVA Build
     timeout-minutes: 45
     strategy:
       matrix:
