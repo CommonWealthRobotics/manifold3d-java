@@ -381,7 +381,7 @@ jobs:
     - name: test cmake consumer
       run: |
         cd ..
-        ./manifold/scripts/test-cmake-subdir.sh
+        ./manifold3d-java/scripts/test-cmake-subdir.sh
 
   build_nix:
     timeout-minutes: 30
