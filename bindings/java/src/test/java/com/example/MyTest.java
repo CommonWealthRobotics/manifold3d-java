@@ -63,81 +63,13 @@ public class MyTest extends Application {
 	// Parameter controls
 	private TextField scaleXField, scaleYField, scaleZField, segmentsField;
 
-	private void loadNativeLibrary(String libName) {
-		try {
-			// Detect platform
-			String os = System.getProperty("os.name").toLowerCase();
-			String arch = System.getProperty("os.arch").toLowerCase();
-			
-			if (arch.equals("amd64"))
-				arch = "x86_64";
-			
-			String platform;
-			String extension;
-			if (os.contains("win")) {
-				platform = "win-" + arch;
-				extension = ".dll";
-			} else if (os.contains("mac")) {
-				platform = "mac-" + arch;
-				extension = ".dylib";
-			} else if (os.contains("nix") || os.contains("nux") || os.contains("aix")) {
-				platform = "linux-" + arch;
-				extension = ".so";
-			} else {
-				throw new RuntimeException("Unsupported OS: " + os);
-			}
-			
-			// Add library extension
-			String fullName = libName + extension;
 
-			// Copy libraries to lib directory
-			java.io.File libsDir = new java.io.File("libs");
-			if (!libsDir.exists())
-				libsDir.mkdirs();
-			
-			java.io.File libFile = new java.io.File(libsDir, fullName);
-			java.io.File devFile = new java.io.File("src/main/resources/natives/" + platform + "/" + fullName);
-
-			System.out.println("Searching library: " +  devFile.getAbsolutePath());
-			
-			// Check timestamp, copy only newer
-			boolean needsCopy = !libFile.exists();
-			if (!needsCopy && devFile.exists())
-				needsCopy = devFile.lastModified() > libFile.lastModified();
-			
-			if (needsCopy) {
-				if (devFile.exists()) {
-					java.nio.file.Files.copy(devFile.toPath(), libFile.toPath(), 
-						java.nio.file.StandardCopyOption.REPLACE_EXISTING,
-						java.nio.file.StandardCopyOption.COPY_ATTRIBUTES);
-						libFile.setExecutable(true);
-				} else {
-					try (java.io.InputStream in = getClass().getResourceAsStream("/natives/" + platform + "/" + fullName)) {
-						if (in == null)
-							throw new RuntimeException("Library not found: " + fullName + " for platform " + platform);
-
-						java.nio.file.Files.copy(in, libFile.toPath(), 
-							java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-						System.out.println("Extracted to libs/: " + fullName);
-					}
-				}
-			}
-			
-			System.load(libFile.getAbsolutePath());
-			
-		} catch (Exception e) {
-			throw new RuntimeException("Failed to load: " + libName, e);
-		}
-	}
 
 	@Override
 	public void start(Stage stage) {
 
 		this.stage = stage;
 		try {
-			loadNativeLibrary("libmanifold");
-			loadNativeLibrary("libmanifoldc");
-
 			manifold = new ManifoldBindings();
 			converter = new ManifoldMesh(manifold);
 		} catch (Exception  e) {
