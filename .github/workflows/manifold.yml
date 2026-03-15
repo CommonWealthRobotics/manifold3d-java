@@ -416,6 +416,7 @@ jobs:
     - name: Build With parallelization
       run: |
         bash bindings/java/scripts/linux/buildC-arm.sh
+        mvn test --file bindings/java/pom.xml
     - name: Upload native libraries
       uses: actions/upload-artifact@v4
       with:
@@ -444,6 +445,7 @@ jobs:
     - name: Build With parallelization
       run: |
         bash bindings/java/scripts/linux/buildC.sh
+        mvn test --file bindings/java/pom.xml
     - name: Upload native libraries
       uses: actions/upload-artifact@v4
       with:
@@ -468,6 +470,7 @@ jobs:
         mkdir -p ./bindings/java/src/main/resources/manifold3d/natives/windows-x86_64/
         cp ./build/src/libmanifold.so ./bindings/java/src/main/resources/manifold3d/natives/win-x86_64/
         cp ./build/bindings/c/libmanifoldc.so ./bindings/java/src/main/resources/manifold3d/natives/win-x86_64/
+        mvn test --file bindings/java/pom.xml
      - name: Upload native libraries
       uses: actions/upload-artifact@v4
       with:
@@ -475,7 +478,7 @@ jobs:
         path: bindings/java/src/main/resources/manifold3d/natives/       
   deploy_java:
       runs-on: ubuntu-latest
-      needs: [ build_linux_java_x86,build_linux_java_ARM ]
+      needs: [ build_linux_java_x86,build_linux_java_ARM,build_windows_java_x86 ]
       steps:
       - uses: actions/checkout@v4
       - name: Download native libraries
