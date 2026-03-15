@@ -202,7 +202,6 @@ jobs:
         run: |
           bash bindings/java/scripts/findVersion.sh
           ls -al bindings/java/scripts/
-          mvn versions:set -DnewVersion=$(bash bindings/java/scripts/findVersion.sh) --file bindings/java/pom.xml
           bash bindings/java/scripts/clojar.sh $(bash bindings/java/scripts/findVersion.sh)
         env:
           CLOJARS_USERNAME: ${{ secrets.CLOJARS_USERNAME }}

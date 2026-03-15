@@ -13,16 +13,8 @@ echo "Clojar Java $JAVA_HOME"
 echo "Clojar Version: $1"
 
 set -e
-mvn versions:set -DnewVersion=$1 --file bindings/java/pom.xml
 cd bindings/java/
-mvn package -Dos.classifier=linux-x86_64
+mvn versions:set -DnewVersion=$1 --file pom.xml
+mvn deploy --settings=bindings/java/settings.xml
 cd ../../
-set +e
-#mv bindings/java/target/manifold3d-*.jar bindings/java/target/manifold3d-$1.jar
 set -e
-mvn deploy:deploy-file \
-  -DpomFile=bindings/java/pom.xml \
-  -DrepositoryId=clojars \
-  -Durl=https://clojars.org/repo \
-  -Dfile=bindings/java/target/manifold3d-$1.jar \
-  --settings=bindings/java/settings.xml
