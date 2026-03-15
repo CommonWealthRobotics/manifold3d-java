@@ -14,9 +14,7 @@ echo "Clojar Version: $1"
 
 set -e
 cd bindings/java/
-mvn versions:set -DnewVersion=$1 --file pom.xml
-mvn deploy -Dmaven.deploy.skip=false \
-    -DaltDeploymentRepository=clojars::default::https://clojars.org/repo \
-    --settings=settings.xml --no-transfer-progress
+mvn versions:set -DnewVersion=$1 --file pom.xml  --no-transfer-progress
+mvn deploy --settings=settings.xml --no-transfer-progress
 cd ../../
 set -e
