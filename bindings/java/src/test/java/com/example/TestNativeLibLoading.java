@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Test;
 
 import com.cadoodlecad.manifold.ManifoldBindings;
 
-class NativeLibLoading {
+class TestNativeLibLoading {
 
 	@Test
 	void test() throws Throwable {
