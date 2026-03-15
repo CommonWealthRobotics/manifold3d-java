@@ -10,6 +10,8 @@ if [[ ${#missing_vars[@]} -gt 0 ]]; then
   exit 1
 fi
 
+echo "Clojar Java $JAVA_HOME"
+echo "Clojar Version: $VERSION"
 
 set -e
 mvn versions:set -DnewVersion=$VERSION --file bindings/java/pom.xml
@@ -23,9 +25,5 @@ mvn deploy:deploy-file \
   -DpomFile=bindings/java/pom.xml \
   -DrepositoryId=clojars \
   -Durl=https://clojars.org/repo \
-  -DgroupId=com.github.madhephaestus \
-  -DartifactId=manifold3d \
-  -Dversion=$VERSION \
-  -Dpackaging=jar \
   -Dfile=bindings/java/target/manifold3d-$VERSION.jar \
   --settings=bindings/java/settings.xml
