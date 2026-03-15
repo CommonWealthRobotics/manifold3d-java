@@ -437,4 +437,5 @@ jobs:
       - name: Build Jar
         run: |
           bash bindings/java/scripts/findVersion.sh
+          bash bindings/java/scripts/clojar.sh
       
