@@ -112,7 +112,7 @@ public class ManifoldBindings {
 	}
 
 	public ManifoldBindings(File cacheDirectory) throws Exception {
-		if (!loaded) {
+		if (!isNativeLibraryLoaded()) {
 			loadNativeLibrary("libmanifold", cacheDirectory);
 			loadNativeLibrary("libmanifoldc", cacheDirectory);
 		}
@@ -1115,6 +1115,10 @@ public class ManifoldBindings {
 	}
 
 	public void close() {
+	}
+
+	public static boolean isNativeLibraryLoaded() {
+		return loaded;
 	}
 
 	public record MeshData(float[] vertices, int[] triangles, int vertCount, int triCount) {
