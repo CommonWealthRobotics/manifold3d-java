@@ -1,7 +1,6 @@
 missing_vars=()
 [[ -z "${CLOJARS_USERNAME}" ]] && missing_vars+=("CLOJARS_USERNAME")
 [[ -z "${CLOJARS_TOKEN}" ]] && missing_vars+=("CLOJARS_TOKEN")
-[[ -z "${VERSION}" ]] && missing_vars+=("VERSION")
 [[ -z "${JAVA_HOME}" ]] && missing_vars+=("JAVA_HOME")
 
 if [[ ${#missing_vars[@]} -gt 0 ]]; then
