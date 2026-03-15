@@ -150,8 +150,8 @@ jobs:
         cd ..
         mkdir -p bindings\java\src\main\resources\manifold3d\natives\win-x86_64\
         Get-ChildItem -Path . -Recurse -Filter *.dll | Select-Object -ExpandProperty FullName
-        cp build\lib\Release\manifold.dll bindings\java\src\main\resources\manifold3d\natives\win-x86_64\
-        cp build\lib\Release\manifoldc.dll bindings\java\src\main\resources\manifold3d\natives\win-x86_64\
+        cp build\lib\Release\manifold.dll bindings\java\src\main\resources\manifold3d\natives\win-x86_64\libmanifold.dll
+        cp build\lib\Release\manifoldc.dll bindings\java\src\main\resources\manifold3d\natives\win-x86_64\libmanifoldc.dll
         mvn test --file bindings/java/pom.xml
     - name: Upload native libraries
       uses: actions/upload-artifact@v4
