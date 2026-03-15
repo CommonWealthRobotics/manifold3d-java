@@ -18,7 +18,7 @@ jobs:
 
   build_mac_java:
     timeout-minutes: 30
-    runs-on: macos-latest
+    runs-on: macos-14
     steps:
     - name: Install common dependencies
       run: |
