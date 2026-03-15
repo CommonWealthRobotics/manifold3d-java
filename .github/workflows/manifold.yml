@@ -411,8 +411,8 @@ jobs:
         cd build
         cmake  -DMANIFOLD_CROSS_SECTION=ON -DMANIFOLD_USE_BUILTIN_CLIPPER2=ON -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DMANIFOLD_STRICT=ON -DMANIFOLD_USE_BUILTIN_TBB=ON -DMANIFOLD_DEBUG=ON -DMANIFOLD_ASSERT=ON -DMANIFOLD_PYBIND=OFF -DMANIFOLD_PAR=ON .. && make
         mkdir -p ./bindings/java/src/main/resources/manifold3d/natives/mac-arm64/
-        cp ./build/src/libmanifold.so ./bindings/java/src/main/resources/manifold3d/natives/mac-arm64/
-        cp ./build/bindings/c/libmanifoldc.so ./bindings/java/src/main/resources/manifold3d/natives/mac-arm64/
+        cp ./build/src/libmanifold.dylib ./bindings/java/src/main/resources/manifold3d/natives/mac-arm64/
+        cp ./build/bindings/c/libmanifoldc.dylib ./bindings/java/src/main/resources/manifold3d/natives/mac-arm64/
         mvn test --file bindings/java/pom.xml
     - name: Upload native libraries
       uses: actions/upload-artifact@v4
@@ -494,8 +494,8 @@ jobs:
         cd build
         cmake --build . --target ALL_BUILD --config Release
         mkdir -p ./bindings/java/src/main/resources/manifold3d/natives/win-x86_64/
-        cp ./build/src/libmanifold.so ./bindings/java/src/main/resources/manifold3d/natives/win-x86_64/
-        cp ./build/bindings/c/libmanifoldc.so ./bindings/java/src/main/resources/manifold3d/natives/win-x86_64/
+        cp ./build/src/libmanifold.dll ./bindings/java/src/main/resources/manifold3d/natives/win-x86_64/
+        cp ./build/bindings/c/libmanifoldc.dll ./bindings/java/src/main/resources/manifold3d/natives/win-x86_64/
         mvn test --file bindings/java/pom.xml
      - name: Upload native libraries
       uses: actions/upload-artifact@v4
