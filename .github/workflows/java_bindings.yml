@@ -18,6 +18,7 @@ concurrency:
 jobs:
 
   build_mac_java:
+    name: JAVA Mac arm64 
     timeout-minutes: 30
     runs-on: macos-14
     steps:
@@ -129,7 +130,7 @@ jobs:
         name: native-libs-linux-x86
         path: bindings/java/src/main/resources/manifold3d/natives/
   build_windows_java_x86:
-    name: Windows JAVA
+    name: JAVA Windows x86 
     timeout-minutes: 30
     runs-on: windows-2025
     steps:
@@ -169,6 +170,7 @@ jobs:
         name: native-libs-windows-x86
         path: bindings/java/src/main/resources/manifold3d/natives/       
   deploy_java:
+      name: JAVA Deploy Jar to Clojars
       runs-on: ubuntu-latest
       if: startsWith(github.ref, 'refs/tags/')
       needs: [ build_linux_java_x86,build_linux_java_ARM,build_windows_java_x86 ,build_mac_java]
