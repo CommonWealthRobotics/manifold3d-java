@@ -43,7 +43,8 @@ jobs:
         ls -al ./build/src/
         cp ./build/src/libmanifold.dylib ./bindings/java/src/main/resources/manifold3d/natives/mac-arm64/
         cp ./build/bindings/c/libmanifoldc.dylib ./bindings/java/src/main/resources/manifold3d/natives/mac-arm64/
-        mvn test --file bindings/java/pom.xml
+        cd bindings/java/
+        mvn test --file pom.xml
     - name: Upload native libraries
       uses: actions/upload-artifact@v4
       with:
@@ -80,7 +81,8 @@ jobs:
     - name: Build With parallelization
       run: |
         bash bindings/java/scripts/linux/buildC-arm.sh
-        mvn test --file bindings/java/pom.xml
+        cd bindings/java/
+        mvn test --file pom.xml
     - name: Upload native libraries
       uses: actions/upload-artifact@v4
       with:
@@ -117,7 +119,8 @@ jobs:
     - name: Build With parallelization
       run: |
         bash bindings/java/scripts/linux/buildC.sh
-        mvn test --file bindings/java/pom.xml
+        cd bindings/java/
+        mvn test --file pom.xml
     - name: Upload native libraries
       uses: actions/upload-artifact@v4
       with:
@@ -152,7 +155,10 @@ jobs:
         Get-ChildItem -Path . -Recurse -Filter *.dll | Select-Object -ExpandProperty FullName
         cp build\lib\Release\manifold.dll bindings\java\src\main\resources\manifold3d\natives\win-x86_64\libmanifold.dll
         cp build\lib\Release\manifoldc.dll bindings\java\src\main\resources\manifold3d\natives\win-x86_64\libmanifoldc.dll
-        mvn test --file bindings/java/pom.xml
+        cd bindings\java
+        mvn test --file pom.xml
+        cd ..
+        cd ..
     - name: Upload native libraries
       uses: actions/upload-artifact@v4
       with:
