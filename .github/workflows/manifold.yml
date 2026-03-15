@@ -192,7 +192,7 @@ jobs:
           ls -al bindings/java/src/main/resources/manifold3d/natives/win-x86_64
           ls -al bindings/java/src/main/resources/manifold3d/natives/mac-arm64
       - name: Pull a JavaFX JDK
-      run: wget https://cdn.azul.com/zulu/bin/zulu21.46.19-ca-fx-jdk21.0.9-linux_x64.tar.gz
+        run: wget https://cdn.azul.com/zulu/bin/zulu21.46.19-ca-fx-jdk21.0.9-linux_x64.tar.gz
 
       - name: Set Java
         uses: actions/setup-java@v1
