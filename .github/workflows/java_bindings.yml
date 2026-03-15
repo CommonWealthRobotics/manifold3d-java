@@ -6,7 +6,10 @@ name: CI
 # events but only for the master branch
 on:
   push:
-    - '*'
+    branches:
+      - '*'
+    tags:
+      - '*'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -165,6 +168,7 @@ jobs:
         path: bindings/java/src/main/resources/manifold3d/natives/       
   deploy_java:
       runs-on: ubuntu-latest
+      if: startsWith(github.ref, 'refs/tags/')
       needs: [ build_linux_java_x86,build_linux_java_ARM,build_windows_java_x86 ,build_mac_java]
       steps:
       - uses: actions/checkout@v4
