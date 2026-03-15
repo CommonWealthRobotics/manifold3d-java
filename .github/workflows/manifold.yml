@@ -461,13 +461,13 @@ jobs:
       with:
         cmake-version: 4.0.2
     - uses: ilammy/msvc-dev-cmd@v1
-    - name: Build ${{matrix.parallelization}}
+    - name: Build for Java
       shell: powershell
       run: |
         cmake . -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DMANIFOLD_STRICT=ON -DMANIFOLD_USE_BUILTIN_TBB=ON -DMANIFOLD_DEBUG=ON -DMANIFOLD_ASSERT=ON -DMANIFOLD_PAR=ON -A x64 -B build
         cd build
         cmake --build . --target ALL_BUILD --config Release
-        mkdir -p ./bindings/java/src/main/resources/manifold3d/natives/windows-x86_64/
+        mkdir -p ./bindings/java/src/main/resources/manifold3d/natives/win-x86_64/
         cp ./build/src/libmanifold.so ./bindings/java/src/main/resources/manifold3d/natives/win-x86_64/
         cp ./build/bindings/c/libmanifoldc.so ./bindings/java/src/main/resources/manifold3d/natives/win-x86_64/
         mvn test --file bindings/java/pom.xml
@@ -501,6 +501,7 @@ jobs:
           ls -al bindings/java/src/main/resources/manifold3d/natives/
           ls -al bindings/java/src/main/resources/manifold3d/natives/linux-x86_64
           ls -al bindings/java/src/main/resources/manifold3d/natives/linux-arm64
+          ls -al bindings/java/src/main/resources/manifold3d/natives/win-x86_64
       - name: Build Jar
         run: |
           ls -al bindings/java/scripts/
