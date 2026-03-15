@@ -41,6 +41,9 @@ public class ManifoldBindings {
 			if (os.contains("win")) {
 				platform = "win-" + arch;
 				extension = ".dll";
+				if(libName.startsWith("lib")) {
+					libName=libName.substring(3, libName.length());
+				}
 			} else if (os.contains("mac")) {
 				platform = "mac-" + arch;
 				extension = ".dylib";
@@ -94,7 +97,7 @@ public class ManifoldBindings {
 			} else {
 				System.out.println("Copy not performed, already in cache");
 			}
-
+			System.out.println("Loading library "+libFile.getAbsolutePath());
 			System.load(libFile.getAbsolutePath());
 			loaded = true;
 		} catch (Exception e) {

@@ -6,8 +6,7 @@ name: CI
 # events but only for the master branch
 on:
   push:
-    tags:
-      - '*'
+    - '*'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -44,7 +43,7 @@ jobs:
         cp ./build/src/libmanifold.dylib ./bindings/java/src/main/resources/manifold3d/natives/mac-arm64/
         cp ./build/bindings/c/libmanifoldc.dylib ./bindings/java/src/main/resources/manifold3d/natives/mac-arm64/
         cd bindings/java/
-        mvn test --file pom.xml
+        mvn test --file pom.xml --no-transfer-progress
     - name: Upload native libraries
       uses: actions/upload-artifact@v4
       with:
@@ -82,7 +81,7 @@ jobs:
       run: |
         bash bindings/java/scripts/linux/buildC-arm.sh
         cd bindings/java/
-        mvn test --file pom.xml
+        mvn test --file pom.xml --no-transfer-progress
     - name: Upload native libraries
       uses: actions/upload-artifact@v4
       with:
@@ -120,7 +119,7 @@ jobs:
       run: |
         bash bindings/java/scripts/linux/buildC.sh
         cd bindings/java/
-        mvn test --file pom.xml
+        mvn test --file pom.xml --no-transfer-progress
     - name: Upload native libraries
       uses: actions/upload-artifact@v4
       with:
@@ -147,16 +146,16 @@ jobs:
     - name: Build for Java
       shell: powershell
       run: |
-        cmake . -DMANIFOLD_CROSS_SECTION=ON -DMANIFOLD_USE_BUILTIN_CLIPPER2=ON  -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DMANIFOLD_STRICT=ON -DMANIFOLD_USE_BUILTIN_TBB=ON -DMANIFOLD_DEBUG=ON -DMANIFOLD_ASSERT=ON -DMANIFOLD_PAR=ON -A x64 -B build
+        cmake . -DMANIFOLD_CROSS_SECTION=ON -DMANIFOLD_USE_BUILTIN_CLIPPER2=ON -DCMAKE_BUILD_TYPE=Release -DASSIMP_ENABLE=ON -DBUILD_SHARED_LIBS=ON -DMANIFOLD_DEBUG=ON -DMANIFOLD_EXPORT=ON -DMANIFOLD_PAR=ON -DMANIFOLD_USE_BUILTIN_TBB=ON -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -A x64 -B build
         cd build
         cmake --build . --target ALL_BUILD --config Release
         cd ..
         mkdir -p bindings\java\src\main\resources\manifold3d\natives\win-x86_64\
         Get-ChildItem -Path . -Recurse -Filter *.dll | Select-Object -ExpandProperty FullName
-        cp build\lib\Release\manifold.dll bindings\java\src\main\resources\manifold3d\natives\win-x86_64\libmanifold.dll
-        cp build\lib\Release\manifoldc.dll bindings\java\src\main\resources\manifold3d\natives\win-x86_64\libmanifoldc.dll
+        cp build\lib\Release\manifold.dll bindings\java\src\main\resources\manifold3d\natives\win-x86_64\manifold.dll
+        cp build\lib\Release\manifoldc.dll bindings\java\src\main\resources\manifold3d\natives\win-x86_64\manifoldc.dll
         cd bindings\java
-        mvn test --file pom.xml
+        mvn test --file pom.xml --no-transfer-progress
         cd ..
         cd ..
     - name: Upload native libraries
