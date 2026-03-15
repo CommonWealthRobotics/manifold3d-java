@@ -11,19 +11,19 @@ if [[ ${#missing_vars[@]} -gt 0 ]]; then
 fi
 
 echo "Clojar Java $JAVA_HOME"
-echo "Clojar Version: $VERSION"
+echo "Clojar Version: $1"
 
 set -e
-mvn versions:set -DnewVersion=$VERSION --file bindings/java/pom.xml
+mvn versions:set -DnewVersion=$1 --file bindings/java/pom.xml
 cd bindings/java/
 mvn package -Dos.classifier=linux-x86_64
 cd ../../
 set +e
-#mv bindings/java/target/manifold3d-*.jar bindings/java/target/manifold3d-$VERSION.jar
+#mv bindings/java/target/manifold3d-*.jar bindings/java/target/manifold3d-$1.jar
 set -e
 mvn deploy:deploy-file \
   -DpomFile=bindings/java/pom.xml \
   -DrepositoryId=clojars \
   -Durl=https://clojars.org/repo \
-  -Dfile=bindings/java/target/manifold3d-$VERSION.jar \
+  -Dfile=bindings/java/target/manifold3d-$1.jar \
   --settings=bindings/java/settings.xml

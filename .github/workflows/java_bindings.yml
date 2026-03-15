@@ -202,10 +202,8 @@ jobs:
       - name: Build Jar
         run: |
           ls -al bindings/java/scripts/
-          export VERSION=$(bash bindings/java/scripts/findVersion.sh)
-          echo "Version is $VERSION"
-          mvn versions:set -DnewVersion=$VERSION --file bindings/java/pom.xml
-          bash bindings/java/scripts/clojar.sh
+          mvn versions:set -DnewVersion=$(bash bindings/java/scripts/findVersion.sh) --file bindings/java/pom.xml
+          bash bindings/java/scripts/clojar.sh $(bash bindings/java/scripts/findVersion.sh)
         env:
           CLOJARS_USERNAME: ${{ secrets.CLOJARS_USERNAME }}
           CLOJARS_TOKEN: ${{ secrets.CLOJARS_TOKEN }}
