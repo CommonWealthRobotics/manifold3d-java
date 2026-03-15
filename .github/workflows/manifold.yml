@@ -449,6 +449,30 @@ jobs:
       with:
         name: native-libs-linux-x86
         path: bindings/java/src/main/resources/manifold3d/natives/
+  build_windows_java_x86:
+    name: Windows JAVA
+    timeout-minutes: 30
+    runs-on: windows-2025
+    steps:
+    - uses: actions/checkout@v4
+    - uses: jwlawson/actions-setup-cmake@v2
+      with:
+        cmake-version: 4.0.2
+    - uses: ilammy/msvc-dev-cmd@v1
+    - name: Build ${{matrix.parallelization}}
+      shell: powershell
+      run: |
+        cmake . -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DMANIFOLD_STRICT=ON -DMANIFOLD_USE_BUILTIN_TBB=ON -DMANIFOLD_DEBUG=ON -DMANIFOLD_ASSERT=ON -DMANIFOLD_PAR=ON -A x64 -B build
+        cd build
+        cmake --build . --target ALL_BUILD --config Release
+        mkdir -p ./bindings/java/src/main/resources/manifold3d/natives/windows-x86_64/
+        cp ./build/src/libmanifold.so ./bindings/java/src/main/resources/manifold3d/natives/win-x86_64/
+        cp ./build/bindings/c/libmanifoldc.so ./bindings/java/src/main/resources/manifold3d/natives/win-x86_64/
+     - name: Upload native libraries
+      uses: actions/upload-artifact@v4
+      with:
+        name: native-libs-windows-x86
+        path: bindings/java/src/main/resources/manifold3d/natives/       
   deploy_java:
       runs-on: ubuntu-latest
       needs: [ build_linux_java_x86,build_linux_java_ARM ]
@@ -462,15 +486,23 @@ jobs:
       - name: Download native libraries
         uses: actions/download-artifact@v4
         with:
+          name: native-libs-windows-x86
+          path: bindings/java/src/main/resources/manifold3d/natives/
+      - name: Download native libraries
+        uses: actions/download-artifact@v4
+        with:
           name: native-libs-linux-x86
           path: bindings/java/src/main/resources/manifold3d/natives/
       - name: List shared libraries
         run: |
           ls -al bindings/java/src/main/resources/manifold3d/natives/
           ls -al bindings/java/src/main/resources/manifold3d/natives/linux-x86_64
+          ls -al bindings/java/src/main/resources/manifold3d/natives/linux-arm64
       - name: Build Jar
         run: |
           ls -al bindings/java/scripts/
           export VERSION=$(bash bindings/java/scripts/findVersion.sh)
           bash bindings/java/scripts/clojar.sh
-      
+        env:
+          CLOJARS_USERNAME: ${{ secrets.CLOJARS_USERNAME }}
+          CLOJARS_TOKEN: ${{ secrets.CLOJARS_TOKEN }}
