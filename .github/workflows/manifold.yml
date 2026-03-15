@@ -436,6 +436,6 @@ jobs:
           ls -al bindings/java/src/main/resources/manifold3d/natives/linux-x86_64
       - name: Build Jar
         run: |
-          bash bindings/java/scripts/findVersion.sh
+          export VERSION=$(bash bindings/java/scripts/findVersion.sh)
           bash bindings/java/scripts/clojar.sh
       
