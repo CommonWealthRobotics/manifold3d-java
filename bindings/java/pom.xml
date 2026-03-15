@@ -2,12 +2,18 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0"
 	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
-
+	<licenses>
+		<license>
+			<name>Creative Commons Attribution 4.0 International</name>
+			<url>https://creativecommons.org/licenses/by/4.0/</url>
+			<distribution>repo</distribution>
+		</license>
+	</licenses>
 	<modelVersion>4.0.0</modelVersion>
 
 	<groupId>com.github.madhephaestus</groupId>
 	<artifactId>manifold3d</artifactId>
-	<version>0.1.0</version>
+	<version>3.1.1-a864b6f9-SNAPSHOT</version>
 
 	<properties>
 		<maven.compiler.release>21</maven.compiler.release>
