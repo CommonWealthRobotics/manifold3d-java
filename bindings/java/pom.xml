@@ -1,55 +1,64 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
 
-    <modelVersion>4.0.0</modelVersion>
+	<modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.github.madhephaestus</groupId>
-    <artifactId>manifold3d</artifactId>
-    <version>0.1.0</version>
+	<groupId>com.github.madhephaestus</groupId>
+	<artifactId>manifold3d</artifactId>
+	<version>0.1.0</version>
 
-    <properties>
-        <maven.compiler.release>21</maven.compiler.release>
-    </properties>
+	<properties>
+		<maven.compiler.release>21</maven.compiler.release>
+	</properties>
 
-    <distributionManagement>
-        <repository>
-            <id>clojars</id>
-            <name>Clojars repository</name>
-            <url>https://clojars.org/repo</url>
-        </repository>
-    </distributionManagement>
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.11.0</version>
-                <configuration>
-                    <compilerArgs>
-                        <arg>--enable-preview</arg>
-                    </compilerArgs>
-                </configuration>
-            </plugin>
-            <plugin>
-                <groupId>org.codehaus.mojo</groupId>
-                <artifactId>exec-maven-plugin</artifactId>
-                <configuration>
-                    <systemProperties>
-                        <property>
-                            <key>java.library.path</key>
-                            <value>${project.basedir}/native</value>
-                        </property>
-                    </systemProperties>
-                    <commandlineArgs>--enable-preview --enable-native-access=ALL-UNNAMED</commandlineArgs>
-                </configuration>
-            </plugin>
-        </plugins>
-    </build>
+	<distributionManagement>
+		<repository>
+			<id>clojars</id>
+			<name>Clojars repository</name>
+			<url>https://clojars.org/repo</url>
+		</repository>
+	</distributionManagement>
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-compiler-plugin</artifactId>
+				<version>3.11.0</version>
+				<configuration>
+					<compilerArgs>
+						<arg>--enable-preview</arg>
+					</compilerArgs>
+				</configuration>
+			</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-surefire-plugin</artifactId>
+				<version>3.1.2</version>
+				<configuration>
+					<argLine>--enable-preview</argLine>
+				</configuration>
+			</plugin>
+			<plugin>
+				<groupId>org.codehaus.mojo</groupId>
+				<artifactId>exec-maven-plugin</artifactId>
+				<configuration>
+					<systemProperties>
+						<property>
+							<key>java.library.path</key>
+							<value>${project.basedir}/native</value>
+						</property>
+					</systemProperties>
+					<commandlineArgs>--enable-preview
+						--enable-native-access=ALL-UNNAMED</commandlineArgs>
+				</configuration>
+			</plugin>
+		</plugins>
+	</build>
 
-    <scm>
-    	<url>https://github.com/CommonWealthRobotics/manifold3d-java</url>
-    	<developerConnection>Kevin Harrington</developerConnection>
-    </scm>
+	<scm>
+		<url>https://github.com/CommonWealthRobotics/manifold3d-java</url>
+		<developerConnection>Kevin Harrington</developerConnection>
+	</scm>
 </project>

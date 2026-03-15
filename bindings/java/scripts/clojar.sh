@@ -26,5 +26,5 @@ mvn deploy:deploy-file \
   -DartifactId=manifold3d \
   -Dversion=$VERSION \
   -Dpackaging=jar \
-  -Dfile=./target/manifold3d-$VERSION.jar \
+  -Dfile=bindings/java/target/manifold3d-$VERSION.jar \
   --settings=bindings/java/settings.xml
