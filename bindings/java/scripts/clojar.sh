@@ -17,7 +17,7 @@ cd bindings/java/
 mvn package -Dos.classifier=linux-x86_64
 cd ../../
 set +e
-mv bindings/java/target/manifold3d-*.jar bindings/java/target/manifold3d-$VERSION.jar
+#mv bindings/java/target/manifold3d-*.jar bindings/java/target/manifold3d-$VERSION.jar
 set -e
 mvn deploy:deploy-file \
   -DpomFile=bindings/java/pom.xml \
