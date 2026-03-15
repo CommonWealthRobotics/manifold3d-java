@@ -425,6 +425,7 @@ jobs:
       runs-on: ubuntu-latest
       needs: build_linux_java_x86
       steps:
+      - uses: actions/checkout@v4
       - name: Download native libraries
         uses: actions/download-artifact@v4
         with:
@@ -436,6 +437,7 @@ jobs:
           ls -al bindings/java/src/main/resources/manifold3d/natives/linux-x86_64
       - name: Build Jar
         run: |
+          ls -al bindings/java/scripts/
           export VERSION=$(bash bindings/java/scripts/findVersion.sh)
           bash bindings/java/scripts/clojar.sh
       
