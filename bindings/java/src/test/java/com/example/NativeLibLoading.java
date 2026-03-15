@@ -11,6 +11,7 @@ class NativeLibLoading {
 	@Test
 	void test() throws Exception {
 		ManifoldBindings manifold = new ManifoldBindings();
+		
 	}
 
 }

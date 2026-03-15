@@ -34,7 +34,7 @@ public class ManifoldBindings {
 
 			if (arch.equals("amd64"))
 				arch = "x86_64";
-			if (arch.equals("aarch"))
+			if (arch.contains("aarch"))
 				arch = "arm64";
 			String platform;
 			String extension;
