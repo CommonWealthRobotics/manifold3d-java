@@ -44,9 +44,11 @@ public class ManifoldBindings {
 			} else if (os.contains("mac")) {
 				platform = "mac-" + arch;
 				extension = ".dylib";
+				libName="lib"+libName;
 			} else if (os.contains("nix") || os.contains("nux") || os.contains("aix")) {
 				platform = "linux-" + arch;
 				extension = ".so";
+				libName="lib"+libName;
 			} else {
 				throw new RuntimeException("Unsupported OS: " + os);
 			}
@@ -74,12 +76,6 @@ public class ManifoldBindings {
 				needsCopy = devFile.lastModified() > libFile.lastModified();
 
 			if (needsCopy) {
-//				if (devFile.exists()) {
-//					java.nio.file.Files.copy(devFile.toPath(), libFile.toPath(), 
-//						java.nio.file.StandardCopyOption.REPLACE_EXISTING,
-//						java.nio.file.StandardCopyOption.COPY_ATTRIBUTES);
-//						libFile.setExecutable(true);
-//				} else {
 				try (java.io.InputStream in = ManifoldBindings.class
 						.getResourceAsStream("/manifold3d/natives/" + platform + "/" + fullName)) {
 					if (in == null)
@@ -89,8 +85,10 @@ public class ManifoldBindings {
 					System.out.println("Extracted to libs/: " + fullName);
 					if (cacheDirectory == null)
 						libFile.deleteOnExit();
+				}catch(Throwable t) {
+					throw new RuntimeException("Failed to load: " + libName, t);
+
 				}
-				// }
 			} else {
 				System.out.println("Copy not performed, already in cache");
 			}
@@ -103,8 +101,8 @@ public class ManifoldBindings {
 	}
 	
 	public static void loadNativeLibrarys(File cacheDirectory) throws Exception {
-		loadNativeLibrary("libmanifold", cacheDirectory);
-		loadNativeLibrary("libmanifoldc", cacheDirectory);
+		loadNativeLibrary("manifold", cacheDirectory);
+		loadNativeLibrary("manifoldc", cacheDirectory);
 	}
 
 	public ManifoldBindings() throws Exception {
@@ -113,8 +111,8 @@ public class ManifoldBindings {
 
 	public ManifoldBindings(File cacheDirectory) throws Exception {
 		if (!isNativeLibraryLoaded()) {
-			loadNativeLibrary("libmanifold", cacheDirectory);
-			loadNativeLibrary("libmanifoldc", cacheDirectory);
+			loadNativeLibrary("manifold", cacheDirectory);
+			loadNativeLibrary("manifoldc", cacheDirectory);
 		}
 
 		this.library = SymbolLookup.loaderLookup();
