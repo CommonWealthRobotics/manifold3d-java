@@ -15,6 +15,6 @@ echo "Clojar Version: $1"
 set -e
 cd bindings/java/
 mvn versions:set -DnewVersion=$1 --file pom.xml
-mvn deploy --settings=bindings/java/settings.xml
+mvn deploy --settings=settings.xml
 cd ../../
 set -e
