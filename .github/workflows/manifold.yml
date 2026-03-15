@@ -150,8 +150,9 @@ jobs:
         cmake --build . --target ALL_BUILD --config Release
         cd ..
         mkdir -p ./bindings/java/src/main/resources/manifold3d/natives/win-x86_64/
-        cp ./build/src/libmanifold.dll ./bindings/java/src/main/resources/manifold3d/natives/win-x86_64/
-        cp ./build/bindings/c/libmanifoldc.dll ./bindings/java/src/main/resources/manifold3d/natives/win-x86_64/
+        ls -al build/bin/Release/
+        cp build/bin/Release/manifold.dll ./bindings/java/src/main/resources/manifold3d/natives/win-x86_64/
+        cp build/bin/Release/manifoldc.dll ./bindings/java/src/main/resources/manifold3d/natives/win-x86_64/
         mvn test --file bindings/java/pom.xml
     - name: Upload native libraries
       uses: actions/upload-artifact@v4
