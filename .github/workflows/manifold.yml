@@ -150,7 +150,7 @@ jobs:
         cmake --build . --target ALL_BUILD --config Release
         cd ..
         mkdir -p ./bindings/java/src/main/resources/manifold3d/natives/win-x86_64/
-        dir build/bin/Release/
+        Get-ChildItem -Path . -Recurse -Filter *.dll | Select-Object -ExpandProperty FullName
         cp build/bin/Release/manifold.dll ./bindings/java/src/main/resources/manifold3d/natives/win-x86_64/
         cp build/bin/Release/manifoldc.dll ./bindings/java/src/main/resources/manifold3d/natives/win-x86_64/
         mvn test --file bindings/java/pom.xml
