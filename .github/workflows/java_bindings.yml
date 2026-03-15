@@ -6,9 +6,8 @@ name: CI
 # events but only for the master branch
 on:
   push:
-    branches: [ master,development ]
-  pull_request:
-    branches: [ master,development ]
+    tags:
+      - '*'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
