@@ -41,6 +41,7 @@ public class ManifoldBindings {
 			if (os.contains("win")) {
 				platform = "win-" + arch;
 				extension = ".dll";
+				libName="lib"+libName;
 			} else if (os.contains("mac")) {
 				platform = "mac-" + arch;
 				extension = ".dylib";
