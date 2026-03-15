@@ -471,7 +471,7 @@ jobs:
         cp ./build/src/libmanifold.so ./bindings/java/src/main/resources/manifold3d/natives/win-x86_64/
         cp ./build/bindings/c/libmanifoldc.so ./bindings/java/src/main/resources/manifold3d/natives/win-x86_64/
         mvn test --file bindings/java/pom.xml
-     - name: Upload native libraries
+    - name: Upload native libraries
       uses: actions/upload-artifact@v4
       with:
         name: native-libs-windows-x86
