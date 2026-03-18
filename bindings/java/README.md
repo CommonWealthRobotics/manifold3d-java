@@ -12,7 +12,8 @@ First build the C code:
         bash bindings/java/scripts/linux/buildC.sh
         cd bindings/java/
         mvn test --file pom.xml --no-transfer-progress
-```        
+```
+       
 
 #### MacOS
 
