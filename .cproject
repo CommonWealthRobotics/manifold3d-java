@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <?fileVersion 4.0.0?><cproject storage_type_id="org.eclipse.cdt.core.XmlProjectDescriptionStorage">
 	<storageModule moduleId="org.eclipse.cdt.core.settings">
-		<cconfiguration id="cmake4eclipse.mbs.toolchain.cmake.566751580">
-			<storageModule buildSystemId="org.eclipse.cdt.managedbuilder.core.configurationDataProvider" id="cmake4eclipse.mbs.toolchain.cmake.566751580" moduleId="org.eclipse.cdt.core.settings" name="Default">
+		<cconfiguration id="cmake4eclipse.mbs.toolchain.cmake.197386861">
+			<storageModule buildSystemId="org.eclipse.cdt.managedbuilder.core.configurationDataProvider" id="cmake4eclipse.mbs.toolchain.cmake.197386861" moduleId="org.eclipse.cdt.core.settings" name="Default">
 				<externalSettings/>
 				<extensions>
 					<extension id="org.eclipse.cdt.core.PE64" point="org.eclipse.cdt.core.BinaryParser"/>
@@ -14,12 +14,12 @@
 				</extensions>
 			</storageModule>
 			<storageModule moduleId="cdtBuildSystem" version="4.0.0">
-				<configuration buildProperties="" id="cmake4eclipse.mbs.toolchain.cmake.566751580" name="Default" parent="org.eclipse.cdt.build.core.emptycfg">
-					<folderInfo id="cmake4eclipse.mbs.toolchain.cmake.566751580.1972257720" name="/" resourcePath="">
-						<toolChain id="cmake4eclipse.mbs.toolchain.cmake.1716398138" name="CMake driven" superClass="cmake4eclipse.mbs.toolchain.cmake">
-							<targetPlatform id="cmake4eclipse.mbs.targetPlatform.cmake.994710037" name="Any Platform" superClass="cmake4eclipse.mbs.targetPlatform.cmake"/>
-							<builder id="cmake4eclipse.mbs.builder.379548883" managedBuildOn="false" name="CMake Builder.Default" superClass="cmake4eclipse.mbs.builder"/>
-							<tool id="cmake4eclipse.mbs.toolchain.tool.dummy.1422803501" name="CMake" superClass="cmake4eclipse.mbs.toolchain.tool.dummy"/>
+				<configuration buildProperties="" id="cmake4eclipse.mbs.toolchain.cmake.197386861" name="Default" parent="org.eclipse.cdt.build.core.emptycfg">
+					<folderInfo id="cmake4eclipse.mbs.toolchain.cmake.197386861.235807215" name="/" resourcePath="">
+						<toolChain id="cmake4eclipse.mbs.toolchain.cmake.273104693" name="CMake driven" superClass="cmake4eclipse.mbs.toolchain.cmake">
+							<targetPlatform id="cmake4eclipse.mbs.targetPlatform.cmake.560839610" name="Any Platform" superClass="cmake4eclipse.mbs.targetPlatform.cmake"/>
+							<builder id="cmake4eclipse.mbs.builder.1170270352" managedBuildOn="false" name="CMake Builder.Default" superClass="cmake4eclipse.mbs.builder"/>
+							<tool id="cmake4eclipse.mbs.toolchain.tool.dummy.2087129861" name="CMake" superClass="cmake4eclipse.mbs.toolchain.tool.dummy"/>
 						</toolChain>
 					</folderInfo>
 				</configuration>
@@ -27,11 +27,11 @@
 			<storageModule moduleId="org.eclipse.cdt.core.externalSettings"/>
 		</cconfiguration>
 	</storageModule>
-	<storageModule moduleId="cdtBuildSystem" version="4.0.0">
-		<project id="manifold3d-java.null.1007269921" name="manifold3d-java"/>
-	</storageModule>
 	<storageModule moduleId="scannerConfiguration">
 		<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId=""/>
+	</storageModule>
+	<storageModule moduleId="cdtBuildSystem" version="4.0.0">
+		<project id="manifold3d-java.null.438634284" name="manifold3d-java"/>
 	</storageModule>
 	<storageModule moduleId="org.eclipse.cdt.core.LanguageSettingsProviders"/>
 </cproject>
