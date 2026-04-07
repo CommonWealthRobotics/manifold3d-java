@@ -292,6 +292,9 @@ public class ManifoldBindings {
 		// ManifoldVec2 is {double x, double y} = 16 bytes
 		load("manifold_polygons_get_point", MemoryLayout.structLayout(ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE),
 				ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT);
+		// ManifoldPolygons* manifold_alloc_polygons();
+		load("manifold_alloc_polygons", ValueLayout.ADDRESS);
+		
 		// ===== Analysis =====
 
 		// double manifold_volume(ManifoldManifold* m);
@@ -492,9 +495,9 @@ public class ManifoldBindings {
 	public ArrayList<double[][]> slice(MemorySegment m, double height) throws Throwable {
 		MemorySegment polygons = null;
 		try (Arena arena = Arena.ofConfined()) {
-			MemorySegment mem = arena.allocate(256); // ManifoldPolygons opaque mem
+			MemorySegment mem = (MemorySegment) functions.get("manifold_alloc_polygons").invoke();
 			polygons = (MemorySegment) functions.get("manifold_slice").invoke(mem, m, height);
-
+			
 			long numContours = (long) functions.get("manifold_polygons_num_contour").invoke(polygons);
 			ArrayList<double[][]> result = new ArrayList<double[][]>((int) numContours);
 
