@@ -4,6 +4,7 @@ import java.io.File;
 import java.lang.foreign.*;
 import java.lang.invoke.MethodHandle;
 import java.nio.file.Files;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -281,7 +282,16 @@ public class ManifoldBindings {
 		// ManifoldPolygons* manifold_slice(void* mem, ManifoldManifold* m, double
 		// height);
 		load("manifold_slice", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_DOUBLE);
+		// size_t manifold_polygons_num_contour(ManifoldPolygons* p);
+		load("manifold_polygons_num_contour", ValueLayout.JAVA_LONG, ValueLayout.ADDRESS);
 
+		// size_t manifold_polygons_contour_length(ManifoldPolygons* p, int idx);
+		load("manifold_polygons_contour_length", ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_INT);
+
+		// ManifoldVec2 manifold_polygons_get_point(ManifoldPolygons* p, int contour, int idx);
+		// ManifoldVec2 is {double x, double y} = 16 bytes
+		load("manifold_polygons_get_point", MemoryLayout.structLayout(ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE),
+				ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT);
 		// ===== Analysis =====
 
 		// double manifold_volume(ManifoldManifold* m);
@@ -466,6 +476,49 @@ public class ManifoldBindings {
 
 		System.out.println("Available Manifold functions: " + functions.keySet());
 
+	}
+
+	/**
+	 * Slices the manifold at the given Z height, returning the cross-section as a
+	 * list of polygon contours. Each contour is a list of (x, y) vertex pairs
+	 * representing one closed loop of the cross-section. Outer contours are
+	 * wound counter-clockwise; holes are wound clockwise.
+	 *
+	 * @param m      the manifold to slice
+	 * @param height Z height at which to slice
+	 * @return list of contours, each contour is a double[][] of [x, y] pairs
+	 * @throws Throwable on native call failure
+	 */
+	public ArrayList<double[][]> slice(MemorySegment m, double height) throws Throwable {
+		MemorySegment polygons = null;
+		try (Arena arena = Arena.ofConfined()) {
+			MemorySegment mem = arena.allocate(256); // ManifoldPolygons opaque mem
+			polygons = (MemorySegment) functions.get("manifold_slice").invoke(mem, m, height);
+
+			long numContours = (long) functions.get("manifold_polygons_num_contour").invoke(polygons);
+			ArrayList<double[][]> result = new ArrayList<double[][]>((int) numContours);
+
+			for (int c = 0; c < numContours; c++) {
+				long len = (long) functions.get("manifold_polygons_contour_length").invoke(polygons, c);
+				double[][] contour = new double[(int) len][2];
+				for (int i = 0; i < len; i++) {
+					MemorySegment pt = (MemorySegment) functions.get("manifold_polygons_get_point").invoke(arena,
+							polygons, c, i);
+					contour[i][0] = pt.get(ValueLayout.JAVA_DOUBLE, 0); // x
+					contour[i][1] = pt.get(ValueLayout.JAVA_DOUBLE, 8); // y
+				}
+				result.add(contour);
+			}
+
+			return result;
+		} finally {
+			if (polygons != null) {
+				try {
+					functions.get("manifold_delete_polygons").invoke(polygons);
+				} catch (Throwable ignored) {
+				}
+			}
+		}
 	}
 
 	public void deleteMeshGL64(MemorySegment seg) {
