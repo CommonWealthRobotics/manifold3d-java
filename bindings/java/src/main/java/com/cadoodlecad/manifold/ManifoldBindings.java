@@ -77,12 +77,12 @@ public class ManifoldBindings {
 				needsCopy = devFile.lastModified() > libFile.lastModified();
 
 			if (needsCopy) {
-//				if (devFile.exists()) {
-//					java.nio.file.Files.copy(devFile.toPath(), libFile.toPath(), 
-//						java.nio.file.StandardCopyOption.REPLACE_EXISTING,
-//						java.nio.file.StandardCopyOption.COPY_ATTRIBUTES);
-//						libFile.setExecutable(true);
-//				} else {
+				//				if (devFile.exists()) {
+				//					java.nio.file.Files.copy(devFile.toPath(), libFile.toPath(), 
+				//						java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+				//						java.nio.file.StandardCopyOption.COPY_ATTRIBUTES);
+				//						libFile.setExecutable(true);
+				//				} else {
 				try (java.io.InputStream in = ManifoldBindings.class
 						.getResourceAsStream("/manifold3d/natives/" + platform + "/" + fullName)) {
 					if (in == null)
@@ -468,6 +468,15 @@ public class ManifoldBindings {
 
 	}
 
+	public void deleteMeshGL64(MemorySegment seg) {
+		if (seg == null)
+			return;
+		try {
+			functions.get("manifold_delete_meshgl64").invoke(seg);
+		} catch (Throwable ignored) {
+		}
+	}
+
 	// Data structure
 	public record MeshData64(double[] vertices, long[] triangles, int vertCount, int triCount) {
 	}
@@ -594,7 +603,7 @@ public class ManifoldBindings {
 		}
 	}
 
-// ===== Primitives =====
+	// ===== Primitives =====
 
 	// ManifoldManifold* manifold_empty(void* mem);
 	public MemorySegment empty() throws Throwable {
@@ -631,7 +640,7 @@ public class ManifoldBindings {
 				center);
 	}
 
-// ===== Transformations =====
+	// ===== Transformations =====
 	// 4x4 matrix transform (12 doubles = 3x4 affine matrix, last row implied
 	// 0,0,0,1)
 	// Matrix layout: [x1 y1 z1]
@@ -689,7 +698,7 @@ public class ManifoldBindings {
 		return (MemorySegment) functions.get("manifold_mirror").invoke(mem, m, nx, ny, nz);
 	}
 
-// ===== Boolean operations =====
+	// ===== Boolean operations =====
 
 	// ManifoldManifold* manifold_union(void* mem, ManifoldManifold* a,
 	// ManifoldManifold* b);
@@ -741,7 +750,7 @@ public class ManifoldBindings {
 		}
 	}
 
-// ===== Info =====
+	// ===== Info =====
 
 	// size_t manifold_manifold_size(); Should return 16 bytes
 	public long manifoldSize() throws Throwable {
@@ -803,7 +812,7 @@ public class ManifoldBindings {
 		return (long) functions.get("manifold_num_prop").invoke(m);
 	}
 
-// ===== Refine =====
+	// ===== Refine =====
 
 	// ManifoldManifold* manifold_refine(void* mem, ManifoldManifold* m, int
 	// refine); refine > 1
@@ -917,12 +926,12 @@ public class ManifoldBindings {
 	}
 
 	// Placeholder
-//	public MemorySegment[] decompose(MemorySegment m) throws Throwable {
-//		MemorySegment mem = (MemorySegment) functions.get("manifold_alloc_manifold_vec").invoke();
-//		MemorySegment vec = (MemorySegment) functions.get("manifold_decompose").invoke(mem, m);
-// TODO: Needs vector access functions to implement
-//		return new MemorySegment[]{m}; 
-//	}
+	//	public MemorySegment[] decompose(MemorySegment m) throws Throwable {
+	//		MemorySegment mem = (MemorySegment) functions.get("manifold_alloc_manifold_vec").invoke();
+	//		MemorySegment vec = (MemorySegment) functions.get("manifold_decompose").invoke(mem, m);
+	// TODO: Needs vector access functions to implement
+	//		return new MemorySegment[]{m}; 
+	//	}
 
 	// Creates an independent copy (safe for boolean operations)
 	// ManifoldManifold* manifold_copy(void* mem, ManifoldManifold* m);
