@@ -109,7 +109,7 @@ public class ManifoldBindings {
 	public static void loadNativeLibrarys(File cacheDirectory) throws Exception {
 		loadNativeLibrary("libmanifold", cacheDirectory);
 		loadNativeLibrary("libmanifoldc", cacheDirectory);
-		loadNativeLibrary("libmeshIO", cacheDirectory);
+		// loadNativeLibrary("libmeshIO", cacheDirectory);
 	}
 
 	public ManifoldBindings() throws Exception {
