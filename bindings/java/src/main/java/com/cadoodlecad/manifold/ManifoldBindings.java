@@ -6,8 +6,9 @@ import java.lang.invoke.MethodHandle;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
-
+import java.util.Set;
 import java.io.*;
 import java.lang.foreign.MemorySegment;
 import java.nio.*;
@@ -297,16 +298,19 @@ public class ManifoldBindings {
 		// ManifoldPolygons* manifold_slice(void* mem, ManifoldManifold* m, double
 		// height);
 		load("manifold_slice", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_DOUBLE);
-		// size_t manifold_polygons_num_contour(ManifoldPolygons* p);
-		load("manifold_polygons_num_contour", ValueLayout.JAVA_LONG, ValueLayout.ADDRESS);
 
-		// size_t manifold_polygons_contour_length(ManifoldPolygons* p, int idx);
-		load("manifold_polygons_contour_length", ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_INT);
 
-		// ManifoldVec2 manifold_polygons_get_point(ManifoldPolygons* p, int contour, int idx);
-		// ManifoldVec2 is {double x, double y} = 16 bytes
-		load("manifold_polygons_get_point", MemoryLayout.structLayout(ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE),
-				ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT);
+		load("manifold_alloc_polygons", ValueLayout.ADDRESS);
+		// size_t manifold_polygons_length(ManifoldPolygons* ps);
+		load("manifold_polygons_length", ValueLayout.JAVA_LONG, ValueLayout.ADDRESS);
+
+		// size_t manifold_polygons_simple_length(ManifoldPolygons* ps, size_t idx);
+		load("manifold_polygons_simple_length", ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG);
+		// ManifoldVec2 manifold_polygons_get_point(ManifoldPolygons* ps, size_t simple_idx, size_t pt_idx);
+		// ManifoldVec2 = {double x, double y} = 16 bytes, returned by value
+		load("manifold_polygons_get_point",
+		        MemoryLayout.structLayout(ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE),
+		        ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG);
 		// ManifoldPolygons* manifold_alloc_polygons();
 		load("manifold_alloc_polygons", ValueLayout.ADDRESS);
 
@@ -388,8 +392,11 @@ public class ManifoldBindings {
 		load("manifold_is_empty", ValueLayout.JAVA_INT, ValueLayout.ADDRESS);
 
 		// size_t manifold_manifold_vec_size(); Should return 8
-		load("manifold_manifold_vec_size", ValueLayout.JAVA_LONG, ValueLayout.ADDRESS);
-
+		//load("manifold_manifold_vec_size", ValueLayout.JAVA_LONG, ValueLayout.ADDRESS);
+		// REPLACE WITH (no argument — it's a sizeof-style function):
+		load("manifold_manifold_vec_size", ValueLayout.JAVA_LONG);
+		// AND add the length function for actual runtime vec count:
+		load("manifold_manifold_vec_length", ValueLayout.JAVA_LONG, ValueLayout.ADDRESS);
 		// ManifoldManifold* manifold_manifold_vec_get(void* mem, ManifoldManifoldVec*
 		// ms, size_t idx);
 		load("manifold_manifold_vec_get", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG);
@@ -545,42 +552,38 @@ public class ManifoldBindings {
 		}
 	}
 
-	/**
-	 * Slices the manifold at the given Z height, returning the cross-section as a
-	 * list of polygon contours. Each contour is a list of (x, y) vertex pairs
-	 * representing one closed loop of the cross-section. Outer contours are
-	 * wound counter-clockwise; holes are wound clockwise.
-	 *
-	 * @param m      the manifold to slice
-	 * @param height Z height at which to slice
-	 * @return list of contours, each contour is a double[][] of [x, y] pairs
-	 * @throws Throwable on native call failure
-	 */
 	public ArrayList<double[][]> slice(MemorySegment m, double height) throws Throwable {
 		MemorySegment polygons = null;
 		try (Arena arena = Arena.ofConfined()) {
+			// manifold_slice(void* mem, ManifoldManifold* m, double height) → ManifoldPolygons*
 			MemorySegment mem = (MemorySegment) functions.get("manifold_alloc_polygons").invoke();
 			polygons = (MemorySegment) functions.get("manifold_slice").invoke(mem, m, height);
 
-			long numContours = (long) functions.get("manifold_polygons_num_contour").invoke(polygons);
-			ArrayList<double[][]> result = new ArrayList<double[][]>((int) numContours);
+			// size_t manifold_polygons_length(ManifoldPolygons* ps) → number of contours
+			long numContours = (long) functions.get("manifold_polygons_length").invoke(polygons);
+			ArrayList<double[][]> result = new ArrayList<>((int) numContours);
 
 			for (int c = 0; c < numContours; c++) {
-				long len = (long) functions.get("manifold_polygons_contour_length").invoke(polygons, c);
+				// size_t manifold_polygons_simple_length(ManifoldPolygons* ps, size_t idx)
+				long len = (long) functions.get("manifold_polygons_simple_length").invoke(polygons, (long) c);
 				double[][] contour = new double[(int) len][2];
+
 				for (int i = 0; i < len; i++) {
+					// ManifoldVec2 manifold_polygons_get_point(ManifoldPolygons* ps, size_t simple_idx, size_t pt_idx)
 					MemorySegment pt = (MemorySegment) functions.get("manifold_polygons_get_point").invoke(arena,
-							polygons, c, i);
+							polygons, (long) c, (long) i);
 					contour[i][0] = pt.get(ValueLayout.JAVA_DOUBLE, 0); // x
 					contour[i][1] = pt.get(ValueLayout.JAVA_DOUBLE, 8); // y
 				}
 				result.add(contour);
 			}
-
 			return result;
 		} finally {
 			if (polygons != null) {
-				functions.get("manifold_delete_polygons").invoke(polygons);
+				try {
+					functions.get("manifold_delete_polygons").invoke(polygons);
+				} catch (Throwable ignored) {
+				}
 			}
 		}
 	}
@@ -1029,13 +1032,15 @@ public class ManifoldBindings {
 		} catch (Throwable e) {
 			// Clean up allocated manifolds on failure
 			try {
-				functions.get("manifold_delete_manifold").invoke(firstMem);
+				delete(firstMem);
 			} catch (Throwable ignored) {
+				ignored.printStackTrace();
 			}
 
 			try {
-				functions.get("manifold_delete_manifold").invoke(secondMem);
+				delete(secondMem);
 			} catch (Throwable ignored) {
+				ignored.printStackTrace();
 			}
 
 			throw e;
@@ -1070,12 +1075,9 @@ public class ManifoldBindings {
 	}
 
 	public MemorySegment importMeshGL(float[] vertices, int[] triangles, long nVerts, long nTris) throws Throwable {
-		System.out.println("Importing mesh: " + nVerts + " vertices, " + nTris + " triangles");
 
-		// Validate input arrays match declared sizes
 		if (vertices.length < nVerts * 3 || triangles.length < nTris * 3) {
-			throw new IllegalArgumentException("Array length mismatch: vertices=" + vertices.length + " (expected "
-					+ (nVerts * 3) + "), triangles=" + triangles.length + " (expected " + (nTris * 3) + ")");
+			throw new IllegalArgumentException("Array length mismatch");
 		}
 
 		MethodHandle mh = functions.get("manifold_meshgl");
@@ -1084,79 +1086,53 @@ public class ManifoldBindings {
 
 		try (Arena tempArena = Arena.ofConfined()) {
 
-			// Copy vertices
 			MemorySegment vertPtr = tempArena.allocate(nVerts * 3 * Float.BYTES);
 			vertPtr.copyFrom(MemorySegment.ofArray(vertices));
 
-			// Copy triangles
 			MemorySegment triPtr = tempArena.allocate(nTris * 3 * Integer.BYTES);
 			triPtr.copyFrom(MemorySegment.ofArray(triangles));
 
-			// Allocate MeshGL (native heap - must track for cleanup)
-			MemorySegment meshGLmem = (MemorySegment) functions.get("manifold_alloc_meshgl").invoke();
+			// Allocate both up front so cleanup is uniform
+			MemorySegment meshGLMem = (MemorySegment) functions.get("manifold_alloc_meshgl").invoke();
+
+			MemorySegment mergedMem = (MemorySegment) functions.get("manifold_alloc_meshgl").invoke();
+			MemorySegment merged = null;
 			MemorySegment meshGL = null;
+			MemorySegment manMem = null;
+			MemorySegment manifold = null;
+			try {
+				// Both of these likely return the same pointer they were given
+				meshGL = (MemorySegment) mh.invoke(meshGLMem, vertPtr, nVerts, 3L, triPtr, nTris);
+				merged = (MemorySegment) functions.get("manifold_meshgl_merge").invoke(mergedMem, meshGL);
 
-			try { // Create MeshGL
+				manMem = (MemorySegment) functions.get("manifold_alloc_manifold").invoke();
+				manifold = (MemorySegment) functions.get("manifold_of_meshgl").invoke(manMem, merged);
+//				System.out.println("meshGLMem addr: " + meshGLMem.address());
+//				System.out.println("meshGL    addr: " + meshGL.address());
+//				System.out.println("mergedMem addr: " + mergedMem.address());
+//				System.out.println("merged    addr: " + merged.address());
+//				System.out.println("manMem    addr: " + manMem.address());
+//				System.out.println("manifold  addr: " + manifold.address());
+				return manifold;
 
-				meshGL = (MemorySegment) mh.invoke(meshGLmem, vertPtr, nVerts, 3L, triPtr, nTris);
+			} finally {
+				// Collect unique addresses to delete
+				Set<Long> freed = new HashSet<>();
+				for (MemorySegment seg : new MemorySegment[] { merged, meshGL }) {
+					if (seg == null)
+						continue;
+					if (seg.address() == manifold.address())
+						continue;
+					if (freed.add(seg.address())) { // add() returns false if already present
+						//System.out.print("\nFreeing: " + seg.address());
+						functions.get("manifold_delete_meshgl").invoke(seg);
+						//System.out.print(" done\n ");
 
-				// Merge (native heap - must track for cleanup)
-				MemorySegment mergedMem = (MemorySegment) functions.get("manifold_alloc_meshgl").invoke();
-				MemorySegment merged = null;
-
-				try {
-					merged = (MemorySegment) functions.get("manifold_meshgl_merge").invoke(mergedMem, meshGL);
-
-					// Create Manifold
-					MemorySegment manMem = (MemorySegment) functions.get("manifold_alloc_manifold").invoke();
-					MemorySegment manifold = (MemorySegment) functions.get("manifold_of_meshgl").invoke(manMem, merged);
-
-					// Success path: cleanup intermediates, return result
-					try {
-						functions.get("manifold_delete_meshgl").invoke(merged);
-					} catch (Throwable ignored) {
-					}
-
-					try {
-						functions.get("manifold_delete_meshgl").invoke(meshGL);
-					} catch (Throwable ignored) {
-					}
-
-					return manifold;
-
-				} catch (Throwable e) { // Cleanup merged on failure
-
-					if (merged != null) {
-						try {
-							functions.get("manifold_delete_meshgl").invoke(merged);
-						} catch (Throwable ignored) {
-						}
-					} else {
-						try {
-							functions.get("manifold_delete_meshgl").invoke(mergedMem);
-						} catch (Throwable ignored) {
-						}
-					}
-					throw e;
-				}
-
-			} catch (Throwable e) {// Cleanup meshGL on failure
-
-				if (meshGL != null) {
-					try {
-						functions.get("manifold_delete_meshgl").invoke(meshGL);
-					} catch (Throwable ignored) {
-					}
-				} else {
-					try {
-						functions.get("manifold_delete_meshgl").invoke(meshGLmem);
-					} catch (Throwable ignored) {
 					}
 				}
-				throw e;
+				freed.clear();
 			}
-
-		} // tempArena closed here, vertPtr and triPtr freed automatically
+		}
 	}
 
 	public MeshData exportMeshGL(MemorySegment manifold) throws Throwable {
@@ -1332,8 +1308,16 @@ public class ManifoldBindings {
 		return manifoldHandle + internalTotal + exportTotal + bvhOverhead;
 	}
 
+	//private HashMap<MemorySegment,Exception> deleted = new HashMap<>();
+
 	public void delete(MemorySegment manifold) throws Throwable {
+//		if (deleted.containsKey(manifold)) {
+//			System.err.println("Memory was deleted at ");
+//			deleted.get(manifold).printStackTrace();
+//			throw new DoubleFreeException();
+//		}
 		functions.get("manifold_delete_manifold").invoke(manifold);
+		//deleted.put(manifold, new Exception());
 	}
 
 	// Null-safe delete
@@ -1735,7 +1719,7 @@ public class ManifoldBindings {
 				verts.add(attrFloat(tag, "x"));
 				verts.add(attrFloat(tag, "y"));
 				verts.add(attrFloat(tag, "z"));
-			} else if (tris != null && tag.startsWith("triangle")) {
+			} else if (tris != null && tag.startsWith("triangle") && !tag.startsWith("triangles")) {
 				// <triangle v1=… v2=… v3=…/> — local indices, no offset needed
 				tris.add(attrInt(tag, "v1"));
 				tris.add(attrInt(tag, "v2"));
