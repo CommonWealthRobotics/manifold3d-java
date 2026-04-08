@@ -477,8 +477,57 @@ public class ManifoldBindings {
 				ValueLayout.JAVA_LONG // arg6: size_t n_tris
 		);
 
+		load("manifold_hull_pts", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG);
+
 		System.out.println("Available Manifold functions: " + functions.keySet());
 
+	}
+
+	/**
+	 * Computes the convex hull of a set of points.
+	 *
+	 * Each point is supplied as a {@code double[3]} of {x, y, z}. If fewer than
+	 * 4 points are provided, or all points are coplanar, an empty manifold is
+	 * returned (matching the C++ API's documented behaviour).
+	 *
+	 * The caller owns the returned MemorySegment and must eventually pass it
+	 * to {@link #delete(MemorySegment)} or {@link #safeDelete(MemorySegment)}.
+	 *
+	 * @param points list of points, each a double[3] of {x, y, z}
+	 * @return the convex hull as a ManifoldManifold* MemorySegment
+	 * @throws IllegalArgumentException if any point array has length != 3
+	 * @throws Throwable on native call failure
+	 */
+	public MemorySegment hullPoints(ArrayList<double[]> points) throws Throwable {
+		if (points == null || points.isEmpty()) {
+			return empty();
+		}
+
+		// Validate all points up front before allocating any native memory.
+		for (int i = 0; i < points.size(); i++) {
+			if (points.get(i) == null || points.get(i).length != 3) {
+				throw new IllegalArgumentException("Point at index " + i + " must be a double[3] of {x, y, z}");
+			}
+		}
+
+		// ManifoldVec3 is three packed doubles: {double x, double y, double z} = 24 bytes each.
+		final long VEC3_BYTES = 3 * Double.BYTES;
+		long count = points.size();
+
+		try (Arena arena = Arena.ofConfined()) {
+			// Allocate a flat array of ManifoldVec3 structs in a temporary arena.
+			MemorySegment ptsBuffer = arena.allocate(VEC3_BYTES * count);
+			for (int i = 0; i < count; i++) {
+				double[] pt = points.get(i);
+				long base = i * VEC3_BYTES;
+				ptsBuffer.set(ValueLayout.JAVA_DOUBLE, base, pt[0]); // x
+				ptsBuffer.set(ValueLayout.JAVA_DOUBLE, base + Double.BYTES, pt[1]); // y
+				ptsBuffer.set(ValueLayout.JAVA_DOUBLE, base + 2 * Double.BYTES, pt[2]); // z
+			}
+
+			MemorySegment mem = (MemorySegment) functions.get("manifold_alloc_manifold").invoke();
+			return (MemorySegment) functions.get("manifold_hull_pts").invoke(mem, ptsBuffer, count);
+		}
 	}
 
 	/**
