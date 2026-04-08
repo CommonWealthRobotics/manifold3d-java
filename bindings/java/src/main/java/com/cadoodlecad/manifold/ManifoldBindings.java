@@ -8,6 +8,21 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 
+import java.io.*;
+import java.lang.foreign.MemorySegment;
+import java.nio.*;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.zip.*;
+import java.io.*;
+import java.lang.foreign.MemorySegment;
+import java.nio.*;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.zip.*;
+
 public class ManifoldBindings {
 
 	private static boolean loaded = false;
@@ -1341,4 +1356,542 @@ public class ManifoldBindings {
 
 	public record MeshData(float[] vertices, int[] triangles, int vertCount, int triCount) {
 	}
+
+
+	/**
+	 * Lightweight, zero-dependency library for reading and writing STL and 3MF mesh files,
+	 * integrated directly with {@link ManifoldBindings}.
+	 *
+	 * <p>Instantiate with a {@link ManifoldBindings} reference so that export methods can
+	 * extract mesh data from a live {@link MemorySegment}, and import methods can populate
+	 * a new {@link MemorySegment} from a file.
+	 *
+	 * <h2>Export (MemorySegment → File)</h2>
+	 * <pre>{@code
+	 * MeshIO io = new MeshIO(bindings);
+	 *
+	 * // STL — single mesh
+	 * io.exportSTL(manifoldSegment, new File("out.stl"));
+	 *
+	 * // 3MF — one or many meshes, each becomes a separate <object> in the file
+	 * ArrayList<MemorySegment> meshes = new ArrayList<>();
+	 * meshes.add(bodySegment);
+	 * meshes.add(lidSegment);
+	 * io.export3MF(meshes, new File("assembly.3mf"));
+	 * }</pre>
+	 *
+	 * <h2>Import (File → MemorySegment)</h2>
+	 * <pre>{@code
+	 * MeshIO io = new MeshIO(bindings);
+	 *
+	 * // STL — always one mesh
+	 * MemorySegment manifold = io.importSTL(new File("model.stl"));
+	 *
+	 * // 3MF — one MemorySegment per <object> in the file
+	 * ArrayList<MemorySegment> meshes = io.import3MF(new File("assembly.3mf"));
+	 * }</pre>
+	 *
+	 * <h2>STL notes</h2>
+	 * <ul>
+	 *   <li>Reads both binary and ASCII STL.</li>
+	 *   <li>Writes binary STL (compact, universally supported).</li>
+	 *   <li>STL is an unindexed format; duplicate vertices are welded automatically inside
+	 *       {@link ManifoldBindings#importMeshGL} via {@code manifold_meshgl_merge}.</li>
+	 *   <li>Face normals on export are computed from vertex positions (right-hand rule).</li>
+	 * </ul>
+	 *
+	 * <h2>3MF notes</h2>
+	 * <ul>
+	 *   <li>Reads and writes 3MF Core Specification 1.x (a ZIP archive containing
+	 *       {@code 3D/3dmodel.model}).</li>
+	 *   <li>Each {@code <object>} in the file maps to exactly one {@link MemorySegment}.</li>
+	 *   <li>Indexed — vertex topology is fully preserved on round-trip.</li>
+	 *   <li>Preferred format when manifoldness must survive a save/load cycle.</li>
+	 * </ul>
+	 */
+
+
+	// =========================================================================
+	// Export API  (MemorySegment → File)
+	// =========================================================================
+
+	/**
+	 * Exports the manifold represented by {@code manifold} to a binary STL file.
+	 *
+	 * <p>Calls {@link ManifoldBindings#exportMeshGL(MemorySegment)} to extract mesh data
+	 * from the native segment, then writes it as a binary STL.
+	 *
+	 * @param manifold a fully initialised manifold {@link MemorySegment}
+	 * @param file     destination file (created or overwritten)
+	 */
+	public void exportSTL(MemorySegment manifold, File file) throws Throwable {
+		ManifoldBindings.MeshData mesh = this.exportMeshGL(manifold);
+		writeBinarySTL(mesh.vertices(), mesh.triangles(), mesh.vertCount(), mesh.triCount(), file);
+	}
+
+	/**
+	 * Exports one or more manifolds to a single 3MF file.
+	 *
+	 * <p>Each {@link MemorySegment} in {@code manifolds} becomes a separate
+	 * {@code <object>} element (with its own {@code <vertices>} and {@code <triangles>}
+	 * blocks) and a corresponding {@code <item>} reference in the {@code <build>} section.
+	 * Slicers and CAD tools that support multi-body 3MF will load each object independently.
+	 *
+	 * <p>Calls {@link ManifoldBindings#exportMeshGL(MemorySegment)} for each segment to
+	 * extract mesh data before writing.
+	 *
+	 * @param manifolds one or more fully initialised manifold {@link MemorySegment}s
+	 * @param file      destination file (created or overwritten)
+	 * @throws IllegalArgumentException if {@code manifolds} is empty
+	 */
+	public void export3MF(ArrayList<MemorySegment> manifolds, File file) throws Throwable {
+		if (manifolds == null || manifolds.isEmpty())
+			throw new IllegalArgumentException("manifolds list must not be empty");
+
+		List<ManifoldBindings.MeshData> meshes = new ArrayList<>(manifolds.size());
+		for (MemorySegment seg : manifolds)
+			meshes.add(this.exportMeshGL(seg));
+
+		write3MFInternal(meshes, file);
+	}
+
+	// =========================================================================
+	// Import API  (File → MemorySegment)
+	// =========================================================================
+
+	/**
+	 * Reads an STL file (binary or ASCII) and imports it into a new manifold.
+	 *
+	 * <p>Parses the file into vertex and triangle arrays, then delegates to
+	 * {@link ManifoldBindings#importMeshGL(float[], int[], long, long)}, which welds
+	 * duplicate vertices via {@code manifold_meshgl_merge} and constructs a valid manifold.
+	 *
+	 * @param file a valid STL file (binary or ASCII)
+	 * @return a fully initialised manifold {@link MemorySegment} ready for use with
+	 *         any {@link ManifoldBindings} operation
+	 */
+	public MemorySegment importSTL(File file) throws Throwable {
+		RawMesh raw = parseSTL(file);
+		return this.importMeshGL(raw.vertices, raw.triangles, raw.vertices.length / 3L, raw.triangles.length / 3L);
+	}
+
+	/**
+	 * Reads a 3MF file and imports each {@code <object>} as a separate manifold.
+	 *
+	 * <p>Returns one {@link MemorySegment} per {@code <object>} element found in the file,
+	 * in document order. Each segment is independently constructed via
+	 * {@link ManifoldBindings#importMeshGL(float[], int[], long, long)} so that vertex
+	 * welding is applied per-object and each resulting manifold is self-contained.
+	 *
+	 * @param file a valid 3MF file
+	 * @return one fully initialised manifold {@link MemorySegment} per object in the file;
+	 *         never empty (throws if the file contains no objects)
+	 */
+	public ArrayList<MemorySegment> import3MF(File file) throws Throwable {
+		List<RawMesh> objects = parse3MF(file);
+		ArrayList<MemorySegment> result = new ArrayList<>(objects.size());
+		for (RawMesh raw : objects)
+			result.add(this.importMeshGL(raw.vertices, raw.triangles, raw.vertices.length / 3L,
+					raw.triangles.length / 3L));
+		return result;
+	}
+
+	// =========================================================================
+	// STL – format detection
+	// =========================================================================
+
+	/**
+	 * Heuristic: a file is ASCII STL if it starts with "solid" AND its size does not
+	 * fit the exact binary STL formula {@code 80 + 4 + triCount * 50}.
+	 * Some binary exporters also write "solid" in the header, so the size check is essential.
+	 */
+	private static boolean looksLikeAsciiSTL(byte[] header80, long fileSize) {
+		String prefix = new String(header80, 0, Math.min(5, header80.length), StandardCharsets.US_ASCII).trim()
+				.toLowerCase();
+		if (!prefix.startsWith("solid"))
+			return false; // definitely binary
+		if (fileSize < 134)
+			return true; // too small for valid binary
+
+		// Binary size formula: 84 + N*50.  If remainder ≠ 0 it can't be binary.
+		return (fileSize - 84) % 50 != 0;
+	}
+
+	// =========================================================================
+	// STL – binary read
+	// =========================================================================
+
+	private static RawMesh readBinarySTL(File file) throws IOException {
+		try (DataInputStream dis = new DataInputStream(new BufferedInputStream(new FileInputStream(file)))) {
+
+			dis.skipNBytes(80); // skip header text
+			int triCount = Integer.reverseBytes(dis.readInt()); // little-endian uint32
+
+			// Binary STL is unindexed: each facet has 3 independent vertices.
+			// We emit a sequential index array; importMeshGL → merge will weld duplicates.
+			float[] verts = new float[triCount * 9]; // 3 verts × 3 floats
+			int[] tris = new int[triCount * 3];
+
+			byte[] buf = new byte[50];
+			ByteBuffer bb = ByteBuffer.wrap(buf).order(ByteOrder.LITTLE_ENDIAN);
+
+			for (int i = 0; i < triCount; i++) {
+				dis.readFully(buf);
+				bb.rewind();
+				bb.position(12); // skip 3-float normal
+				int base = i * 9;
+				verts[base] = bb.getFloat();
+				verts[base + 1] = bb.getFloat();
+				verts[base + 2] = bb.getFloat();
+				verts[base + 3] = bb.getFloat();
+				verts[base + 4] = bb.getFloat();
+				verts[base + 5] = bb.getFloat();
+				verts[base + 6] = bb.getFloat();
+				verts[base + 7] = bb.getFloat();
+				verts[base + 8] = bb.getFloat();
+				tris[i * 3] = i * 3;
+				tris[i * 3 + 1] = i * 3 + 1;
+				tris[i * 3 + 2] = i * 3 + 2;
+			}
+			return new RawMesh(verts, tris);
+		}
+	}
+
+	// =========================================================================
+	// STL – ASCII read
+	// =========================================================================
+
+	private static RawMesh readAsciiSTL(File file) throws IOException {
+		List<Float> vList = new ArrayList<>();
+		List<Integer> tList = new ArrayList<>();
+		int vertIdx = 0;
+
+		try (BufferedReader br = new BufferedReader(
+				new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8))) {
+			String line;
+			int faceStart = -1;
+			while ((line = br.readLine()) != null) {
+				line = line.trim().toLowerCase();
+				if (line.startsWith("facet normal")) {
+					faceStart = vertIdx;
+				} else if (line.startsWith("vertex ")) {
+					String[] parts = line.split("\\s+");
+					vList.add(Float.parseFloat(parts[1]));
+					vList.add(Float.parseFloat(parts[2]));
+					vList.add(Float.parseFloat(parts[3]));
+					vertIdx++;
+				} else if (line.startsWith("endfacet")) {
+					tList.add(faceStart);
+					tList.add(faceStart + 1);
+					tList.add(faceStart + 2);
+				}
+			}
+		}
+
+		float[] verts = new float[vList.size()];
+		for (int i = 0; i < vList.size(); i++)
+			verts[i] = vList.get(i);
+		int[] tris = new int[tList.size()];
+		for (int i = 0; i < tList.size(); i++)
+			tris[i] = tList.get(i);
+		return new RawMesh(verts, tris);
+	}
+
+	// =========================================================================
+	// STL – combined entry point
+	// =========================================================================
+
+	private static RawMesh parseSTL(File file) throws IOException {
+		try (FileInputStream fis = new FileInputStream(file)) {
+			byte[] header = fis.readNBytes(80);
+			return looksLikeAsciiSTL(header, file.length()) ? readAsciiSTL(file) : readBinarySTL(file);
+		}
+	}
+
+	// =========================================================================
+	// STL – binary write
+	// =========================================================================
+
+	private static void writeBinarySTL(float[] verts, int[] tris, int vertCount, int triCount, File file)
+			throws IOException {
+		// Layout: 80-byte header | 4-byte tri count | triCount × 50-byte records
+		ByteBuffer buf = ByteBuffer.allocate(84 + triCount * 50).order(ByteOrder.LITTLE_ENDIAN);
+
+		byte[] header = new byte[80];
+		byte[] tag = "Manifold3D-Java MeshIO STL Export".getBytes(StandardCharsets.US_ASCII);
+		System.arraycopy(tag, 0, header, 0, Math.min(tag.length, 80));
+		buf.put(header);
+		buf.putInt(triCount);
+
+		for (int i = 0; i < triCount; i++) {
+			int i0 = tris[i * 3] * 3;
+			int i1 = tris[i * 3 + 1] * 3;
+			int i2 = tris[i * 3 + 2] * 3;
+
+			float ax = verts[i0], ay = verts[i0 + 1], az = verts[i0 + 2];
+			float bx = verts[i1], by = verts[i1 + 1], bz = verts[i1 + 2];
+			float cx = verts[i2], cy = verts[i2 + 1], cz = verts[i2 + 2];
+
+			// Normal = (b−a) × (c−a), normalised
+			float ux = bx - ax, uy = by - ay, uz = bz - az;
+			float vx = cx - ax, vy = cy - ay, vz = cz - az;
+			float nx = uy * vz - uz * vy;
+			float ny = uz * vx - ux * vz;
+			float nz = ux * vy - uy * vx;
+			float len = (float) Math.sqrt(nx * nx + ny * ny + nz * nz);
+			if (len > 1e-12f) {
+				nx /= len;
+				ny /= len;
+				nz /= len;
+			}
+
+			buf.putFloat(nx);
+			buf.putFloat(ny);
+			buf.putFloat(nz);
+			buf.putFloat(ax);
+			buf.putFloat(ay);
+			buf.putFloat(az);
+			buf.putFloat(bx);
+			buf.putFloat(by);
+			buf.putFloat(bz);
+			buf.putFloat(cx);
+			buf.putFloat(cy);
+			buf.putFloat(cz);
+			buf.putShort((short) 0); // attribute byte count
+		}
+
+		try (FileOutputStream fos = new FileOutputStream(file)) {
+			fos.write(buf.array());
+		}
+	}
+
+	// =========================================================================
+	// 3MF – read
+	// =========================================================================
+
+	private static List<RawMesh> parse3MF(File file) throws IOException {
+		return parseModelXml(extract3DModel(file));
+	}
+
+	/** Extracts the {@code 3D/3dmodel.model} entry text from the ZIP archive. */
+	private static String extract3DModel(File file) throws IOException {
+		try (ZipInputStream zis = new ZipInputStream(new FileInputStream(file))) {
+			ZipEntry entry;
+			while ((entry = zis.getNextEntry()) != null) {
+				if (entry.getName().replace('\\', '/').equalsIgnoreCase("3D/3dmodel.model")) {
+					return new String(zis.readAllBytes(), StandardCharsets.UTF_8);
+				}
+				zis.closeEntry();
+			}
+		}
+		throw new IOException("No 3D/3dmodel.model entry found in 3MF archive: " + file);
+	}
+
+	/**
+	 * Hand-rolled XML pull parser for the 3MF model document.
+	 *
+	 * <p>Returns one {@link RawMesh} per {@code <object>} element, preserving the
+	 * per-object vertex/triangle separation that the 3MF format encodes. Triangle indices
+	 * within each object are local (start at 0), which is correct because each
+	 * {@link RawMesh} is independently imported via {@code importMeshGL}.
+	 */
+	private static List<RawMesh> parseModelXml(String xml) {
+		List<RawMesh> result = new ArrayList<>();
+		List<Float> verts = null;
+		List<Integer> tris = null;
+		int pos = 0;
+		int len = xml.length();
+
+		while (pos < len) {
+			int tagStart = xml.indexOf('<', pos);
+			if (tagStart < 0)
+				break;
+			int tagEnd = xml.indexOf('>', tagStart);
+			if (tagEnd < 0)
+				break;
+
+			String tag = xml.substring(tagStart + 1, tagEnd).trim();
+			pos = tagEnd + 1;
+
+			if (tag.startsWith("object") && !tag.startsWith("/object")) {
+				// Opening <object> — start collecting for a new mesh
+				verts = new ArrayList<>();
+				tris = new ArrayList<>();
+			} else if (tag.equals("/object")) {
+				// Closing </object> — finalise and store the mesh
+				if (verts != null && tris != null && !verts.isEmpty()) {
+					float[] va = new float[verts.size()];
+					for (int i = 0; i < verts.size(); i++)
+						va[i] = verts.get(i);
+					int[] ta = new int[tris.size()];
+					for (int i = 0; i < tris.size(); i++)
+						ta[i] = tris.get(i);
+					result.add(new RawMesh(va, ta));
+				}
+				verts = null;
+				tris = null;
+			} else if (verts != null && tag.startsWith("vertex") && !tag.startsWith("vertices")) {
+				// <vertex x=… y=… z=…/> — indices are local to this object
+				verts.add(attrFloat(tag, "x"));
+				verts.add(attrFloat(tag, "y"));
+				verts.add(attrFloat(tag, "z"));
+			} else if (tris != null && tag.startsWith("triangle")) {
+				// <triangle v1=… v2=… v3=…/> — local indices, no offset needed
+				tris.add(attrInt(tag, "v1"));
+				tris.add(attrInt(tag, "v2"));
+				tris.add(attrInt(tag, "v3"));
+			}
+		}
+
+		if (result.isEmpty())
+			throw new IllegalArgumentException("3MF file contains no <object> elements with geometry");
+		return result;
+	}
+
+	// =========================================================================
+	// 3MF – write
+	// =========================================================================
+
+	private static void write3MFInternal(List<ManifoldBindings.MeshData> meshes, File file) throws IOException {
+		writeZip3MF(file, build3MFModelXml(meshes));
+	}
+
+	/**
+	 * Builds the {@code 3dmodel.model} XML for one or more meshes.
+	 *
+	 * <p>Each mesh becomes a separate {@code <object id="N">} element (1-based).
+	 * All objects are referenced in the {@code <build>} section so that slicers
+	 * treat them as independent bodies within the same file.
+	 */
+	private static byte[] build3MFModelXml(List<ManifoldBindings.MeshData> meshes) {
+		// Estimate capacity: fixed overhead + per-mesh overhead + per-vert/tri lines
+		int cap = 512;
+		for (ManifoldBindings.MeshData m : meshes)
+			cap += 200 + m.vertCount() * 60 + m.triCount() * 55;
+		StringBuilder sb = new StringBuilder(cap);
+
+		sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+		sb.append("<model unit=\"millimeter\" xml:lang=\"en-US\"\n");
+		sb.append("  xmlns=\"http://schemas.microsoft.com/3dmanufacturing/core/2015/02\">\n");
+		sb.append("  <resources>\n");
+
+		for (int objIdx = 0; objIdx < meshes.size(); objIdx++) {
+			ManifoldBindings.MeshData mesh = meshes.get(objIdx);
+			int objectId = objIdx + 1; // 3MF object IDs are 1-based
+			float[] verts = mesh.vertices();
+			int[] tris = mesh.triangles();
+
+			sb.append("    <object id=\"").append(objectId).append("\" type=\"model\">\n");
+			sb.append("      <mesh>\n");
+			sb.append("        <vertices>\n");
+			for (int i = 0; i < mesh.vertCount(); i++) {
+				sb.append("          <vertex x=\"").append(verts[i * 3]).append("\" y=\"").append(verts[i * 3 + 1])
+						.append("\" z=\"").append(verts[i * 3 + 2]).append("\"/>\n");
+			}
+			sb.append("        </vertices>\n");
+			sb.append("        <triangles>\n");
+			for (int i = 0; i < mesh.triCount(); i++) {
+				sb.append("          <triangle v1=\"").append(tris[i * 3]).append("\" v2=\"").append(tris[i * 3 + 1])
+						.append("\" v3=\"").append(tris[i * 3 + 2]).append("\"/>\n");
+			}
+			sb.append("        </triangles>\n");
+			sb.append("      </mesh>\n");
+			sb.append("    </object>\n");
+		}
+
+		sb.append("  </resources>\n");
+		sb.append("  <build>\n");
+		for (int objIdx = 0; objIdx < meshes.size(); objIdx++) {
+			sb.append("    <item objectid=\"").append(objIdx + 1).append("\"/>\n");
+		}
+		sb.append("  </build>\n");
+		sb.append("</model>\n");
+
+		return sb.toString().getBytes(StandardCharsets.UTF_8);
+	}
+
+	// =========================================================================
+	// 3MF – ZIP container writer
+	// =========================================================================
+
+	private static void writeZip3MF(File file, byte[] modelBytes) throws IOException {
+		try (ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(file))) {
+			zos.setMethod(ZipOutputStream.DEFLATED);
+			zos.setLevel(Deflater.BEST_SPEED);
+
+			// [Content_Types].xml — required by the OPC container spec
+			putZipEntry(zos, "[Content_Types].xml",
+					("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+							+ "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">\n"
+							+ "  <Default Extension=\"rels\""
+							+ " ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>\n"
+							+ "  <Default Extension=\"model\""
+							+ " ContentType=\"application/vnd.ms-package.3dmanufacturing-3dmodel+xml\"/>\n"
+							+ "</Types>\n").getBytes(StandardCharsets.UTF_8));
+
+			// _rels/.rels — maps the package root to the 3D model entry
+			putZipEntry(zos, "_rels/.rels", ("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" + "<Relationships"
+					+ " xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n" + "  <Relationship"
+					+ " Type=\"http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel\""
+					+ " Target=\"/3D/3dmodel.model\" Id=\"rel0\"/>\n" + "</Relationships>\n")
+							.getBytes(StandardCharsets.UTF_8));
+
+			putZipEntry(zos, "3D/3dmodel.model", modelBytes);
+		}
+	}
+
+	private static void putZipEntry(ZipOutputStream zos, String name, byte[] data) throws IOException {
+		zos.putNextEntry(new ZipEntry(name));
+		zos.write(data);
+		zos.closeEntry();
+	}
+
+	// =========================================================================
+	// XML attribute helpers — no DOM/SAX dependency
+	// =========================================================================
+
+	private static float attrFloat(String tag, String attr) {
+		return Float.parseFloat(attrString(tag, attr));
+	}
+
+	private static int attrInt(String tag, String attr) {
+		return Integer.parseInt(attrString(tag, attr));
+	}
+
+	/**
+	 * Extracts a named XML attribute value from a raw tag string.
+	 * Handles both {@code attr="value"} and {@code attr='value'} quoting styles.
+	 */
+	private static String attrString(String tag, String attr) {
+		int idx = tag.indexOf(attr + "=");
+		if (idx < 0)
+			throw new IllegalArgumentException("Attribute '" + attr + "' not found in tag: " + tag);
+
+		int valStart = idx + attr.length() + 1;
+		char quote = tag.charAt(valStart);
+		if (quote != '"' && quote != '\'') {
+			// Unquoted — read to next whitespace, '/', or '>'
+			int end = valStart;
+			while (end < tag.length()) {
+				char c = tag.charAt(end);
+				if (c == ' ' || c == '/' || c == '>')
+					break;
+				end++;
+			}
+			return tag.substring(valStart, end);
+		}
+		int valEnd = tag.indexOf(quote, valStart + 1);
+		if (valEnd < 0)
+			throw new IllegalArgumentException("Unterminated attribute for '" + attr + "' in: " + tag);
+		return tag.substring(valStart + 1, valEnd);
+	}
+
+	// =========================================================================
+	// Internal mesh data holder
+	// =========================================================================
+
+	/** Flat, unindexed or indexed mesh arrays used only during file parsing. */
+	private record RawMesh(float[] vertices, int[] triangles) {
+	}
+
 }
