@@ -83,23 +83,11 @@ public class ManifoldBindings {
 				libsDir.mkdirs();
 
 			java.io.File libFile = new java.io.File(libsDir, fullName);
-			java.io.File devFile = new java.io.File(
-					"src/main/resources/manifold3d/natives/" + platform + "/" + fullName);
-
-			System.out.println("Searching library: " + devFile.getAbsolutePath());
 
 			// Check timestamp, copy only newer
 			boolean needsCopy = !libFile.exists();
-			if (!needsCopy && devFile.exists())
-				needsCopy = devFile.lastModified() > libFile.lastModified();
-
 			if (needsCopy) {
-				//				if (devFile.exists()) {
-				//					java.nio.file.Files.copy(devFile.toPath(), libFile.toPath(), 
-				//						java.nio.file.StandardCopyOption.REPLACE_EXISTING,
-				//						java.nio.file.StandardCopyOption.COPY_ATTRIBUTES);
-				//						libFile.setExecutable(true);
-				//				} else {
+
 				try (java.io.InputStream in = ManifoldBindings.class
 						.getResourceAsStream("/manifold3d/natives/" + platform + "/" + fullName)) {
 					if (in == null)
