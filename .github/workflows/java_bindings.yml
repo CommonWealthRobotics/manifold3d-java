@@ -44,6 +44,8 @@ jobs:
         cd ..
         mkdir -p ./bindings/java/src/main/resources/manifold3d/natives/mac-arm64/
         ls -al ./build/src/
+        echo "Extras Directory: "
+        ls -al ./build/extras/
         cp ./build/src/libmanifold.dylib ./bindings/java/src/main/resources/manifold3d/natives/mac-arm64/
         cp ./build/bindings/c/libmanifoldc.dylib ./bindings/java/src/main/resources/manifold3d/natives/mac-arm64/
         cp ./build/extras/libmeshIO.dylib ./bindings/java/src/main/resources/manifold3d/natives/mac-arm64/
