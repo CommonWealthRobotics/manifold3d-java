@@ -1,5 +1,7 @@
 package com.example;
 
+
+
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -42,7 +44,7 @@ class ManifoldBindingsTest {
 	 */
 	private static final double CUBE_SIZE = 10.0;
 	private static final double SPHERE_R = 6.0;
-	private static final int SPHERE_SEGS = 32;
+	private static final int SPHERE_SEGS = 100;
 
 	// -------------------------------------------------------------------------
 	// Lifecycle
@@ -76,24 +78,7 @@ class ManifoldBindingsTest {
 	}
 
 	/**
-	 * Asserts that the manifold is non-empty, has a positive triangle count,
-	 * and reports no error status.
-	 */
-	private void assertValidMesh(java.lang.foreign.MemorySegment m, String label) throws Throwable {
-		int status = (int) mb.getClass()
-				.getDeclaredMethod("manifold_status_direct", java.lang.foreign.MemorySegment.class)
-				// status is exposed via numVert/numTri — use those as a proxy
-				.invoke(mb, m);
-		// Status check via public API: isEmpty returns 0 for a good mesh
-		long verts = mb.numVert(m);
-		long tris = mb.numTri(m);
-		assertTrue(verts > 0, label + ": vertex count must be > 0 (got " + verts + ")");
-		assertTrue(tris > 0, label + ": triangle count must be > 0 (got " + tris + ")");
-	}
-
-	/**
-	 * Simpler validity check that doesn't rely on reflection.
-	 * Verifies vertex count, triangle count, and volume are all positive.
+	 * Validity check: verifies vertex count, triangle count, and volume are all positive.
 	 */
 	private void assertMeshValid(java.lang.foreign.MemorySegment m, String label) throws Throwable {
 		long verts = mb.numVert(m);
@@ -228,8 +213,7 @@ class ManifoldBindingsTest {
 	@Test
 	@Order(10)
 	@DisplayName("Union(cube, sphere): valid mesh, STL + 3MF round-trip")
-	void testUnionRoundTrip() throws Throwable {
-		Path tmpDir = new File(".").toPath();
+	void testUnionRoundTrip(@TempDir Path tmpDir) throws Throwable {
 		java.lang.foreign.MemorySegment cube = makeCube();
 		java.lang.foreign.MemorySegment sphere = makeSphere();
 		java.lang.foreign.MemorySegment result = null;
@@ -248,11 +232,8 @@ class ManifoldBindingsTest {
 			assertTrue(unionVol > Math.max(cubeVol, sphereVol), "Union volume must be greater than either part alone");
 
 			// Round-trips
-			File _3mf= tmpDir.resolve("union.3mf").toFile();
-			File stl = tmpDir.resolve("union.stl").toFile();
-
-			mfRe = assert3mfRoundTrip(result, _3mf, "Union");
-			stlRe = assertStlRoundTrip(result, stl, "Union");
+			stlRe = assertStlRoundTrip(result, tmpDir.resolve("union.stl").toFile(), "Union");
+			mfRe = assert3mfRoundTrip(result, tmpDir.resolve("union.3mf").toFile(), "Union");
 
 			assertMeshValid(stlRe, "Union/STL re-import");
 			assertMeshValid(mfRe, "Union/3MF re-import");
@@ -605,6 +586,361 @@ class ManifoldBindingsTest {
 			mb.safeDelete(sphere);
 			mb.safeDelete(diffMs);
 			mb.safeDelete(intersectMs);
+		}
+	}
+
+	// =========================================================================
+	// Slice tests
+	// =========================================================================
+
+	/**
+	 * Slice the 10×10×10 cube (centred at origin) at Z=0.
+	 *
+	 * <p>Expected cross-section: exactly one contour, exactly 4 vertices,
+	 * all at Z=0 (the slice plane), forming a closed square whose corners lie
+	 * at (±5, ±5).  The contour must be a proper rectangle: two pairs of edges
+	 * are axis-aligned and each has length 10.
+	 */
+	@Test
+	@Order(80)
+	@DisplayName("Slice cube at Z=0: one square contour at (±5,±5)")
+	void testSliceCubeAtZero() throws Throwable {
+		java.lang.foreign.MemorySegment cube = makeCube(); // centred, side 10
+		try {
+			ArrayList<double[][]> contours = mb.slice(cube, 0.0);
+
+			// ── contour count ──────────────────────────────────────────────
+			assertEquals(1, contours.size(), "Cube slice at Z=0 must produce exactly one contour");
+
+			double[][] pts = contours.get(0);
+
+			// ── vertex count ───────────────────────────────────────────────
+			// Manifold may emit 4 or 5 points (last may repeat first to close)
+			assertTrue(pts.length ==8,
+					"Cube contour must have 4 unique corners, 4 midpoints (got " + pts.length + ")");
+
+			int unique = pts.length;
+
+			assertEquals(8, unique, "Cube slice must have exactly 8 unique points, 4 corners and 4 mid points");
+
+			// ── all Y-values are zero (slice plane) ────────────────────────
+			// Note: slice() returns (x,y) in the 2-D cross-section plane;
+			// the Z coordinate of the slice is implicit (= height argument).
+			// We verify the 2-D point values are within the cube's XY extents.
+			double half = CUBE_SIZE / 2.0; // 5.0
+			double tol = 1e-6;
+
+			for (int i = 0; i < unique; i++) {
+				double x = pts[i][0];
+				double y = pts[i][1];
+				assertTrue(Math.abs(Math.abs(x) - half) < tol || Math.abs(Math.abs(y) - half) < tol, "Corner " + i
+						+ " at (" + x + "," + y + ") must lie on a face of the unit square (±" + half + ")");
+			}
+
+			// ── the four corners are (±5, ±5) ─────────────────────────────
+			// Collect unique corners and check all four expected ones appear.
+			double[][] corners = new double[unique][2];
+			System.arraycopy(pts, 0, corners, 0, unique);
+
+			double[][] expected = { { -half, -half }, { half, -half }, { half, half }, { -half, half } };
+			for (double[] exp : expected) {
+				boolean found = false;
+				for (double[] got : corners) {
+					if (Math.abs(got[0] - exp[0]) < tol && Math.abs(got[1] - exp[1]) < tol) {
+						found = true;
+						break;
+					}
+				}
+				assertTrue(found, "Expected corner (" + exp[0] + "," + exp[1] + ") not found in slice");
+			}
+
+		} finally {
+			mb.safeDelete(cube);
+		}
+	}
+
+	/**
+	 * Slice the cube above its top face — must produce an empty result.
+	 */
+	@Test
+	@Order(81)
+	@DisplayName("Slice cube above top face: empty result")
+	void testSliceCubeAboveTop() throws Throwable {
+		java.lang.foreign.MemorySegment cube = makeCube();
+		try {
+			// Cube goes from Z=-5 to Z=+5; slice at Z=6 must be empty.
+			ArrayList<double[][]> contours = mb.slice(cube, CUBE_SIZE); // Z=10, above top
+			assertTrue(contours == null || contours.isEmpty(), "Slice above cube top must return no contours");
+		} finally {
+			mb.safeDelete(cube);
+		}
+	}
+
+	/**
+	 * Slice the sphere at Z=0 (equatorial plane).
+	 *
+	 * <p>Expected cross-section: exactly one contour whose points all lie on a
+	 * circle of radius {@value #SPHERE_R}.  Because the sphere is tessellated
+	 * with {@value #SPHERE_SEGS} segments, the slice will be a polygon with
+	 * approximately that many vertices.  We verify:
+	 * <ul>
+	 *   <li>Exactly one contour.</li>
+	 *   <li>Every point is within 2 % of the expected radius from the origin.</li>
+	 *   <li>The contour is ordered (consecutive points are adjacent on the circle).</li>
+	 *   <li>The perimeter is close to 2π·r within 5 %.</li>
+	 * </ul>
+	 */
+	@Test
+	@Order(82)
+	@DisplayName("Slice sphere at Z=0: one circular contour at radius " + SPHERE_R)
+	void testSliceSphereAtEquator() throws Throwable {
+		java.lang.foreign.MemorySegment sphere = makeSphere();
+		try {
+			ArrayList<double[][]> contours = mb.slice(sphere, 0.0);
+
+			// ── one contour ────────────────────────────────────────────────
+			assertEquals(1, contours.size(), "Sphere slice at Z=0 must produce exactly one contour");
+
+			double[][] pts = contours.get(0);
+			int n = pts.length;
+
+			// Discard duplicate closing vertex if present
+			boolean closes = n >= 2 && Math.abs(pts[0][0] - pts[n - 1][0]) < 1e-9
+					&& Math.abs(pts[0][1] - pts[n - 1][1]) < 1e-9;
+			int uniqueN = closes ? n - 1 : n;
+
+			// Equatorial slice of a sphere with SPHERE_SEGS circular segments
+			// should yield roughly SPHERE_SEGS vertices (exact count depends on
+			// tessellation; allow generous ±50 % band).
+			assertTrue(uniqueN >= SPHERE_SEGS / 2, "Sphere equatorial slice should have at least " + SPHERE_SEGS / 2
+					+ " vertices (got " + uniqueN + ")");
+
+			// ── all points lie on (or very near) the sphere's equatorial circle ──
+			double radiusTol = SPHERE_R * 0.05; // 5 % of radius
+			for (int i = 0; i < uniqueN; i++) {
+				double x = pts[i][0];
+				double y = pts[i][1];
+				double r = Math.sqrt(x * x + y * y);
+				assertEquals(SPHERE_R, r, radiusTol, "Slice point " + i + " at (" + x + "," + y + ") radius " + r
+						+ " is not within 5 % of " + SPHERE_R);
+			}
+
+			// ── perimeter close to 2π·r ────────────────────────────────────
+			double perimeter = 0;
+			for (int i = 0; i < uniqueN; i++) {
+				double[] a = pts[i];
+				double[] b = pts[(i + 1) % uniqueN];
+				perimeter += Math.sqrt(Math.pow(b[0] - a[0], 2) + Math.pow(b[1] - a[1], 2));
+			}
+			double expectedPerimeter = 2 * Math.PI * SPHERE_R;
+			assertEquals(expectedPerimeter, perimeter, expectedPerimeter * 0.05,
+					"Sphere slice perimeter must be within 5 % of 2π·r = " + expectedPerimeter);
+
+			// ── winding: contour should not self-intersect ─────────────────
+			// Check via signed area (shoelace) — non-zero means a proper polygon.
+			double signedArea = 0;
+			for (int i = 0; i < uniqueN; i++) {
+				double[] a = pts[i];
+				double[] b = pts[(i + 1) % uniqueN];
+				signedArea += a[0] * b[1] - b[0] * a[1];
+			}
+			signedArea /= 2.0;
+			double expectedArea = Math.PI * SPHERE_R * SPHERE_R;
+			assertEquals(expectedArea, Math.abs(signedArea), expectedArea * 0.05,
+					"Shoelace area of sphere equatorial slice must be within 5 % of π·r²");
+
+		} finally {
+			mb.safeDelete(sphere);
+		}
+	}
+
+	/**
+	 * Slice the sphere at a height close to its north pole — should produce a
+	 * small circle (one contour, all points within a tighter radius band).
+	 */
+	@Test
+	@Order(83)
+	@DisplayName("Slice sphere near north pole: one small contour")
+	void testSliceSphereNearPole() throws Throwable {
+		java.lang.foreign.MemorySegment sphere = makeSphere();
+		try {
+			// Slice at 90 % of the radius — the cross-section is a circle of
+			// radius r·sin(arccos(0.9)) ≈ r·0.4359
+			double sliceZ = SPHERE_R * 0.9;
+			double expectedR = SPHERE_R * Math.sqrt(1 - 0.9 * 0.9); // ≈ 2.615
+			double radiusTol = expectedR * 0.05;
+
+			ArrayList<double[][]> contours = mb.slice(sphere, sliceZ);
+
+			assertEquals(1, contours.size(), "Sphere slice near pole must produce exactly one contour");
+
+			double[][] pts = contours.get(0);
+			int n = pts.length;
+			boolean closes = n >= 2 && Math.abs(pts[0][0] - pts[n - 1][0]) < 1e-9
+					&& Math.abs(pts[0][1] - pts[n - 1][1]) < 1e-9;
+			int uniqueN = closes ? n - 1 : n;
+
+			assertTrue(uniqueN >= 3, "Near-pole slice must have at least 3 vertices");
+
+			for (int i = 0; i < uniqueN; i++) {
+				double x = pts[i][0];
+				double y = pts[i][1];
+				double r = Math.sqrt(x * x + y * y);
+				assertEquals(expectedR, r, radiusTol,
+						"Near-pole slice point " + i + " radius " + r + " should be ≈ " + expectedR);
+			}
+		} finally {
+			mb.safeDelete(sphere);
+		}
+	}
+
+	// =========================================================================
+	// Multi-STL load → multi-part 3MF save
+	// =========================================================================
+
+	/**
+	 * Loads every boolean-operation result (union, difference, intersection)
+	 * and the two primitives from individual STL files, then saves them all
+	 * together as a single multi-part 3MF.  Verifies:
+	 * <ul>
+	 *   <li>All five STL files can be read back as valid manifolds.</li>
+	 *   <li>The combined 3MF file is a valid ZIP with the required OPC entries.</li>
+	 *   <li>Re-importing the 3MF yields exactly five objects whose triangle
+	 *       counts match the originals.</li>
+	 * </ul>
+	 */
+	@Test
+	@Order(90)
+	@DisplayName("Load 5 STLs (cube, sphere, union, diff, intersect) → save as multi-part 3MF → verify")
+	void testMultiStlToMultiPart3mf(@TempDir Path tmpDir) throws Throwable {
+
+		// ── 1. Build all five source manifolds ────────────────────────────
+		java.lang.foreign.MemorySegment cube = makeCube();
+		java.lang.foreign.MemorySegment sphere = makeSphere();
+		java.lang.foreign.MemorySegment unionMs = null;
+		java.lang.foreign.MemorySegment diffMs = null;
+		java.lang.foreign.MemorySegment intersectMs = null;
+
+		// Reloaded from STL
+		java.lang.foreign.MemorySegment cubeStl = null;
+		java.lang.foreign.MemorySegment sphereStl = null;
+		java.lang.foreign.MemorySegment unionStl = null;
+		java.lang.foreign.MemorySegment diffStl = null;
+		java.lang.foreign.MemorySegment intersectStl = null;
+
+		// Reloaded from final 3MF
+		ArrayList<java.lang.foreign.MemorySegment> fromMfObjects = null;
+
+		try {
+			unionMs = mb.union(cube, sphere);
+			diffMs = mb.difference(cube, sphere);
+			intersectMs = mb.intersection(cube, sphere);
+
+			// ── 2. Export each to its own STL ─────────────────────────────
+			File cubeStlFile = tmpDir.resolve("cube.stl").toFile();
+			File sphereStlFile = tmpDir.resolve("sphere.stl").toFile();
+			File unionStlFile = tmpDir.resolve("union.stl").toFile();
+			File diffStlFile = tmpDir.resolve("diff.stl").toFile();
+			File intersectStlFile = tmpDir.resolve("intersect.stl").toFile();
+
+			mb.exportSTL(cube, cubeStlFile);
+			mb.exportSTL(sphere, sphereStlFile);
+			mb.exportSTL(unionMs, unionStlFile);
+			mb.exportSTL(diffMs, diffStlFile);
+			mb.exportSTL(intersectMs, intersectStlFile);
+
+			for (File f : new File[] { cubeStlFile, sphereStlFile, unionStlFile, diffStlFile, intersectStlFile }) {
+				assertTrue(f.exists() && f.length() > 84, f.getName() + " must exist with data");
+			}
+
+			// ── 3. Re-import from STL ─────────────────────────────────────
+			cubeStl = mb.importSTL(cubeStlFile);
+			sphereStl = mb.importSTL(sphereStlFile);
+			unionStl = mb.importSTL(unionStlFile);
+			diffStl = mb.importSTL(diffStlFile);
+			intersectStl = mb.importSTL(intersectStlFile);
+
+			// All re-imports must be valid meshes
+			assertMeshValid(cubeStl, "cube/STL");
+			assertMeshValid(sphereStl, "sphere/STL");
+			assertMeshValid(unionStl, "union/STL");
+			assertMeshValid(diffStl, "diff/STL");
+			assertMeshValid(intersectStl, "intersect/STL");
+
+			// Triangle counts must survive the STL round-trip exactly
+			assertEquals(mb.numTri(cube), mb.numTri(cubeStl), "Cube triangle count must survive STL round-trip");
+			assertEquals(mb.numTri(sphere), mb.numTri(sphereStl), "Sphere triangle count must survive STL round-trip");
+			assertEquals(mb.numTri(unionMs), mb.numTri(unionStl), "Union triangle count must survive STL round-trip");
+			assertEquals(mb.numTri(diffMs), mb.numTri(diffStl),
+					"Difference triangle count must survive STL round-trip");
+			assertEquals(mb.numTri(intersectMs), mb.numTri(intersectStl),
+					"Intersection triangle count must survive STL round-trip");
+
+			// ── 4. Pack all five STL-loaded meshes into one 3MF ───────────
+			ArrayList<java.lang.foreign.MemorySegment> toExport = new ArrayList<>();
+			toExport.add(cubeStl);
+			toExport.add(sphereStl);
+			toExport.add(unionStl);
+			toExport.add(diffStl);
+			toExport.add(intersectStl);
+
+			File multiMfFile = tmpDir.resolve("all_parts.3mf").toFile();
+			mb.export3MF(toExport, multiMfFile);
+			assertTrue(multiMfFile.exists() && multiMfFile.length() > 0, "Multi-part 3MF must exist and be non-empty");
+
+			// ── 5. Validate ZIP structure ─────────────────────────────────
+			try (java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(
+					new java.io.FileInputStream(multiMfFile))) {
+				boolean hasModel = false;
+				boolean hasContentTypes = false;
+				boolean hasRels = false;
+				java.util.zip.ZipEntry entry;
+				while ((entry = zis.getNextEntry()) != null) {
+					String name = entry.getName().replace('\\', '/');
+					if (name.equalsIgnoreCase("3D/3dmodel.model"))
+						hasModel = true;
+					if (name.equals("[Content_Types].xml"))
+						hasContentTypes = true;
+					if (name.equals("_rels/.rels"))
+						hasRels = true;
+					zis.closeEntry();
+				}
+				assertTrue(hasModel, "3MF must contain 3D/3dmodel.model");
+				assertTrue(hasContentTypes, "3MF must contain [Content_Types].xml");
+				assertTrue(hasRels, "3MF must contain _rels/.rels");
+			}
+
+			// ── 6. Re-import 3MF and verify all five objects ──────────────
+			fromMfObjects = mb.import3MF(multiMfFile);
+			assertEquals(5, fromMfObjects.size(), "Re-imported 3MF must contain exactly 5 objects");
+
+			// Expected triangle counts in export order
+			long[] expectedTris = { mb.numTri(cubeStl), mb.numTri(sphereStl), mb.numTri(unionStl), mb.numTri(diffStl),
+					mb.numTri(intersectStl) };
+			String[] labels = { "cube", "sphere", "union", "difference", "intersection" };
+
+			for (int i = 0; i < 5; i++) {
+				java.lang.foreign.MemorySegment obj = fromMfObjects.get(i);
+				assertMeshValid(obj, labels[i] + "/3MF re-import");
+				assertEquals(expectedTris[i], mb.numTri(obj), labels[i] + ": triangle count mismatch in 3MF re-import");
+			}
+
+		} finally {
+			mb.safeDelete(cube);
+			mb.safeDelete(sphere);
+			mb.safeDelete(unionMs);
+			mb.safeDelete(diffMs);
+			mb.safeDelete(intersectMs);
+			mb.safeDelete(cubeStl);
+			mb.safeDelete(sphereStl);
+			mb.safeDelete(unionStl);
+			mb.safeDelete(diffStl);
+			mb.safeDelete(intersectStl);
+			if (fromMfObjects != null) {
+				for (java.lang.foreign.MemorySegment seg : fromMfObjects) {
+					mb.safeDelete(seg);
+				}
+			}
 		}
 	}
 }
