@@ -109,6 +109,7 @@ public class ManifoldBindings {
 	public static void loadNativeLibrarys(File cacheDirectory) throws Exception {
 		loadNativeLibrary("libmanifold", cacheDirectory);
 		loadNativeLibrary("libmanifoldc", cacheDirectory);
+		loadNativeLibrary("libmeshIO", cacheDirectory);
 	}
 
 	public ManifoldBindings() throws Exception {
@@ -117,8 +118,7 @@ public class ManifoldBindings {
 
 	public ManifoldBindings(File cacheDirectory) throws Exception {
 		if (!isNativeLibraryLoaded()) {
-			loadNativeLibrary("libmanifold", cacheDirectory);
-			loadNativeLibrary("libmanifoldc", cacheDirectory);
+			loadNativeLibrarys(cacheDirectory);
 		}
 
 		this.library = SymbolLookup.loaderLookup();

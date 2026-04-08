@@ -46,6 +46,7 @@ jobs:
         ls -al ./build/src/
         cp ./build/src/libmanifold.dylib ./bindings/java/src/main/resources/manifold3d/natives/mac-arm64/
         cp ./build/bindings/c/libmanifoldc.dylib ./bindings/java/src/main/resources/manifold3d/natives/mac-arm64/
+        cp ./build/extras/libmeshIO.dylib ./bindings/java/src/main/resources/manifold3d/natives/mac-arm64/
         cd bindings/java/
         mvn test --file pom.xml --no-transfer-progress
     - name: Upload native libraries
@@ -160,6 +161,7 @@ jobs:
         echo "Copy existing files..."
         cp build\lib\Release\manifold.dll bindings\java\src\main\resources\manifold3d\natives\win-x86_64\manifold.dll
         cp build\lib\Release\manifoldc.dll bindings\java\src\main\resources\manifold3d\natives\win-x86_64\manifoldc.dll
+        cp ./build/extras/libmeshIO.dll bindings\java\src\main\resources\manifold3d\natives\win-x86_64\libmeshIO.dll
         cd bindings\java
         mvn test --file pom.xml --no-transfer-progress
         cd ..

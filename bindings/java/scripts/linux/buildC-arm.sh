@@ -14,3 +14,4 @@ ls -al ./build/src/*
 mkdir -p ./bindings/java/src/main/resources/manifold3d/natives/linux-arm64/
 cp ./build/src/libmanifold.so ./bindings/java/src/main/resources/manifold3d/natives/linux-arm64/
 cp ./build/bindings/c/libmanifoldc.so ./bindings/java/src/main/resources/manifold3d/natives/linux-arm64/
+cp ./build/extras/libmeshIO.so ./bindings/java/src/main/resources/manifold3d/natives/linux-arm64/
