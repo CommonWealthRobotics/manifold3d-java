@@ -40,7 +40,7 @@ jobs:
       run: |
         mkdir build
         cd build
-        cmake  -DASSIMP_ENABLE=ON -DMANIFOLD_CROSS_SECTION=ON -DMANIFOLD_USE_BUILTIN_CLIPPER2=ON -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DMANIFOLD_STRICT=ON -DMANIFOLD_USE_BUILTIN_TBB=ON -DMANIFOLD_DEBUG=ON -DMANIFOLD_ASSERT=ON -DMANIFOLD_PYBIND=OFF -DMANIFOLD_PAR=ON .. && make
+        cmake  -DMANIFOLD_CROSS_SECTION=ON -DMANIFOLD_USE_BUILTIN_CLIPPER2=ON -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DMANIFOLD_STRICT=ON -DMANIFOLD_USE_BUILTIN_TBB=ON -DMANIFOLD_DEBUG=ON -DMANIFOLD_ASSERT=ON -DMANIFOLD_PYBIND=OFF -DMANIFOLD_PAR=ON .. && make
         cd ..
         mkdir -p ./bindings/java/src/main/resources/manifold3d/natives/mac-arm64/
         ls -al ./build/src/
@@ -48,7 +48,6 @@ jobs:
         ls -al ./build/extras/
         cp ./build/src/libmanifold.dylib ./bindings/java/src/main/resources/manifold3d/natives/mac-arm64/
         cp ./build/bindings/c/libmanifoldc.dylib ./bindings/java/src/main/resources/manifold3d/natives/mac-arm64/
-        cp ./build/extras/libmeshIO.dylib ./bindings/java/src/main/resources/manifold3d/natives/mac-arm64/
         cd bindings/java/
         mvn test --file pom.xml --no-transfer-progress
     - name: Upload native libraries
@@ -153,7 +152,7 @@ jobs:
     - name: Build for Java
       shell: powershell
       run: |
-        cmake . -DASSIMP_ENABLE=ON -DMANIFOLD_CROSS_SECTION=ON -DMANIFOLD_USE_BUILTIN_CLIPPER2=ON  -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DMANIFOLD_DEBUG=ON -DMANIFOLD_STRICT=ON -DMANIFOLD_PAR=ON -DMANIFOLD_EXPORT=ON -DMANIFOLD_USE_BUILTIN_TBB=ON -DMANIFOLD_ASSERT=ON -DMANIFOLD_PAR=ON -A x64 -B build
+        cmake . -DMANIFOLD_CROSS_SECTION=ON -DMANIFOLD_USE_BUILTIN_CLIPPER2=ON  -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DMANIFOLD_DEBUG=ON -DMANIFOLD_STRICT=ON -DMANIFOLD_PAR=ON -DMANIFOLD_USE_BUILTIN_TBB=ON -DMANIFOLD_ASSERT=ON -DMANIFOLD_PAR=ON -DMANIFOLD_EXPORT=ON -A x64 -B build
         cd build
         cmake --build . --target ALL_BUILD --config Release
         cd ..
@@ -163,7 +162,6 @@ jobs:
         echo "Copy existing files..."
         cp build\lib\Release\manifold.dll bindings\java\src\main\resources\manifold3d\natives\win-x86_64\manifold.dll
         cp build\lib\Release\manifoldc.dll bindings\java\src\main\resources\manifold3d\natives\win-x86_64\manifoldc.dll
-        cp build\extras\libmeshIO.dll bindings\java\src\main\resources\manifold3d\natives\win-x86_64\libmeshIO.dll
         cd bindings\java
         mvn test --file pom.xml --no-transfer-progress
         cd ..
