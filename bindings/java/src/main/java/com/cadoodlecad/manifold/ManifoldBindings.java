@@ -25,6 +25,18 @@ import java.util.List;
 import java.util.zip.*;
 
 public class ManifoldBindings {
+	public enum ManifoldError {
+		NO_ERROR, NON_FINITE_VERTEX, NOT_MANIFOLD, VERTEX_INDEX_OUT_OF_BOUNDS, PROPERTIES_WRONG_LENGTH,
+		MISSING_POSITION_PROPERTIES, MERGE_VECTORS_DIFFERENT_LENGTHS, MERGE_INDEX_OUT_OF_BOUNDS, TRANSFORM_WRONG_LENGTH,
+		RUN_INDEX_WRONG_LENGTH, FACE_ID_WRONG_LENGTH, INVALID_CONSTRUCTION, RESULT_TOO_LARGE;
+
+		public static ManifoldError fromInt(int code) {
+			ManifoldError[] values = values();
+			if (code < 0 || code >= values.length)
+				throw new IllegalArgumentException("Unknown ManifoldError code: " + code);
+			return values[code];
+		}
+	}
 
 	private static boolean loaded = false;
 
@@ -296,9 +308,8 @@ public class ManifoldBindings {
 		load("manifold_polygons_simple_length", ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG);
 		// ManifoldVec2 manifold_polygons_get_point(ManifoldPolygons* ps, size_t simple_idx, size_t pt_idx);
 		// ManifoldVec2 = {double x, double y} = 16 bytes, returned by value
-		load("manifold_polygons_get_point",
-		        MemoryLayout.structLayout(ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE),
-		        ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG);
+		load("manifold_polygons_get_point", MemoryLayout.structLayout(ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE),
+				ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG);
 		// ManifoldPolygons* manifold_alloc_polygons();
 		load("manifold_alloc_polygons", ValueLayout.ADDRESS);
 
@@ -493,7 +504,11 @@ public class ManifoldBindings {
 
 	}
 
-
+	// ManifoldError manifold_status(ManifoldManifold* m);
+	public ManifoldError status(MemorySegment m) throws Throwable {
+		int code = (int) functions.get("manifold_status").invoke(m);
+		return ManifoldError.fromInt(code);
+	}
 
 	public ArrayList<double[][]> slice(MemorySegment m, double height) throws Throwable {
 		MemorySegment polygons = null;
@@ -531,7 +546,7 @@ public class ManifoldBindings {
 		}
 	}
 
-	public void deleteMeshGL64(MemorySegment seg) {
+	private void deleteMeshGL64(MemorySegment seg) {
 		if (seg == null)
 			return;
 		try {
@@ -919,6 +934,7 @@ public class ManifoldBindings {
 		MemorySegment mem = (MemorySegment) functions.get("manifold_alloc_manifold").invoke();
 		return (MemorySegment) functions.get("manifold_hull").invoke(mem, m);
 	}
+
 	/**
 	 * Computes the convex hull of a set of points.
 	 *
@@ -965,6 +981,7 @@ public class ManifoldBindings {
 			return (MemorySegment) functions.get("manifold_hull_pts").invoke(mem, ptsBuffer, count);
 		}
 	}
+
 	// ManifoldManifold* manifold_batch_hull(void* mem, ManifoldManifoldVec* ms);
 	public MemorySegment batchHull(MemorySegment[] shapes) throws Throwable {
 		MemorySegment vec = (MemorySegment) functions.get("manifold_alloc_manifold_vec").invoke();
@@ -1031,13 +1048,6 @@ public class ManifoldBindings {
 		}
 	}
 
-	// Placeholder
-	//	public MemorySegment[] decompose(MemorySegment m) throws Throwable {
-	//		MemorySegment mem = (MemorySegment) functions.get("manifold_alloc_manifold_vec").invoke();
-	//		MemorySegment vec = (MemorySegment) functions.get("manifold_decompose").invoke(mem, m);
-	// TODO: Needs vector access functions to implement
-	//		return new MemorySegment[]{m}; 
-	//	}
 
 	// Creates an independent copy (safe for boolean operations)
 	// ManifoldManifold* manifold_copy(void* mem, ManifoldManifold* m);
@@ -1091,12 +1101,12 @@ public class ManifoldBindings {
 
 				manMem = (MemorySegment) functions.get("manifold_alloc_manifold").invoke();
 				manifold = (MemorySegment) functions.get("manifold_of_meshgl").invoke(manMem, merged);
-//				System.out.println("meshGLMem addr: " + meshGLMem.address());
-//				System.out.println("meshGL    addr: " + meshGL.address());
-//				System.out.println("mergedMem addr: " + mergedMem.address());
-//				System.out.println("merged    addr: " + merged.address());
-//				System.out.println("manMem    addr: " + manMem.address());
-//				System.out.println("manifold  addr: " + manifold.address());
+				//				System.out.println("meshGLMem addr: " + meshGLMem.address());
+				//				System.out.println("meshGL    addr: " + meshGL.address());
+				//				System.out.println("mergedMem addr: " + mergedMem.address());
+				//				System.out.println("merged    addr: " + merged.address());
+				//				System.out.println("manMem    addr: " + manMem.address());
+				//				System.out.println("manifold  addr: " + manifold.address());
 				return manifold;
 
 			} finally {
@@ -1295,11 +1305,11 @@ public class ManifoldBindings {
 	//private HashMap<MemorySegment,Exception> deleted = new HashMap<>();
 
 	public void delete(MemorySegment manifold) throws Throwable {
-//		if (deleted.containsKey(manifold)) {
-//			System.err.println("Memory was deleted at ");
-//			deleted.get(manifold).printStackTrace();
-//			throw new DoubleFreeException();
-//		}
+		//		if (deleted.containsKey(manifold)) {
+		//			System.err.println("Memory was deleted at ");
+		//			deleted.get(manifold).printStackTrace();
+		//			throw new DoubleFreeException();
+		//		}
 		functions.get("manifold_delete_manifold").invoke(manifold);
 		//deleted.put(manifold, new Exception());
 	}
