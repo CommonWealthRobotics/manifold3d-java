@@ -572,10 +572,6 @@ public class ManifoldBindings {
 					MemorySegment result = (MemorySegment) functions.get("manifold_of_meshgl64").invoke(manMem, merged);
 
 					try {
-						functions.get("manifold_delete_meshgl64").invoke(merged);
-					} catch (Throwable ignored) {
-					}
-					try {
 						functions.get("manifold_delete_meshgl64").invoke(meshGL);
 					} catch (Throwable ignored) {
 					}
