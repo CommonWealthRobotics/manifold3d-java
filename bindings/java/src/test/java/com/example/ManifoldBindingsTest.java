@@ -47,6 +47,7 @@ class ManifoldBindingsTest {
 	private static final double CUBE_SIZE = 10.0;
 	private static final double SPHERE_R = 6.0;
 	private static final int SPHERE_SEGS = 100;
+	private Path tmpDir = new File(".").toPath();
 
 	// -------------------------------------------------------------------------
 	// Lifecycle
@@ -131,27 +132,28 @@ class ManifoldBindingsTest {
 
 		return reimported;
 	}
-	
+
 	@Test
-	public void testMeshGL64() throws Throwable{
+	public void testMeshGL64() throws Throwable {
 		java.lang.foreign.MemorySegment cube = makeCube();
-		MemorySegment loaded=null;
+		MemorySegment loaded = null;
 		try {
 			assertMeshValid(cube, "Cube");
 			// A cube has 8 vertices and 12 triangles (6 faces × 2)
 			assertEquals(8, mb.numVert(cube), "Cube should have 8 vertices");
 			assertEquals(12, mb.numTri(cube), "Cube should have 12 triangles");
-			
+
 			MeshData64 meshgl = mb.exportMeshGL64(cube);
 			double[] verts = meshgl.vertices(); // flat [x0,y0,z0, x1,y1,z1, ...]
 			long[] tris = meshgl.triangles(); // flat [i0,i1,i2, i3,i4,i5, ...]
 			int triCount = meshgl.triCount();
 			loaded = mb.importMeshGL64(verts, tris, triCount, triCount);
-			
+
 			MeshData64 meshglLoaded = mb.exportMeshGL64(loaded);
-			double[] vertsl = meshglLoaded.vertices(); // flat [x0,y0,z0, x1,y1,z1, ...]
-			long[] trisl = meshglLoaded.triangles(); // flat [i0,i1,i2, i3,i4,i5, ...]
+			// double[] vertsl = meshglLoaded.vertices(); // flat [x0,y0,z0, x1,y1,z1, ...]
+			// long[] trisl = meshglLoaded.triangles(); // flat [i0,i1,i2, i3,i4,i5, ...]
 			int triCountl = meshglLoaded.triCount();
+			assertEquals(triCountl, triCount, "Matching trinagle count");
 		} finally {
 			mb.safeDelete(cube);
 			mb.safeDelete(loaded);
@@ -241,7 +243,7 @@ class ManifoldBindingsTest {
 	@Test
 	@Order(10)
 	@DisplayName("Union(cube, sphere): valid mesh, STL + 3MF round-trip")
-	void testUnionRoundTrip(@TempDir Path tmpDir) throws Throwable {
+	void testUnionRoundTrip() throws Throwable {
 		java.lang.foreign.MemorySegment cube = makeCube();
 		java.lang.foreign.MemorySegment sphere = makeSphere();
 		java.lang.foreign.MemorySegment result = null;
@@ -281,7 +283,7 @@ class ManifoldBindingsTest {
 	@Test
 	@Order(20)
 	@DisplayName("Difference(cube, sphere): valid mesh, STL + 3MF round-trip")
-	void testDifferenceRoundTrip(@TempDir Path tmpDir) throws Throwable {
+	void testDifferenceRoundTrip() throws Throwable {
 		java.lang.foreign.MemorySegment cube = makeCube();
 		java.lang.foreign.MemorySegment sphere = makeSphere();
 		java.lang.foreign.MemorySegment result = null;
@@ -319,7 +321,7 @@ class ManifoldBindingsTest {
 	@Test
 	@Order(30)
 	@DisplayName("Intersection(cube, sphere): valid mesh, STL + 3MF round-trip")
-	void testIntersectionRoundTrip(@TempDir Path tmpDir) throws Throwable {
+	void testIntersectionRoundTrip() throws Throwable {
 		java.lang.foreign.MemorySegment cube = makeCube();
 		java.lang.foreign.MemorySegment sphere = makeSphere();
 		java.lang.foreign.MemorySegment result = null;
@@ -360,7 +362,7 @@ class ManifoldBindingsTest {
 	@Test
 	@Order(40)
 	@DisplayName("Hull(cube): valid mesh, STL + 3MF round-trip")
-	void testHullCubeRoundTrip(@TempDir Path tmpDir) throws Throwable {
+	void testHullCubeRoundTrip() throws Throwable {
 		java.lang.foreign.MemorySegment cube = makeCube();
 		java.lang.foreign.MemorySegment result = null;
 		java.lang.foreign.MemorySegment stlRe = null;
@@ -390,7 +392,7 @@ class ManifoldBindingsTest {
 	@Test
 	@Order(41)
 	@DisplayName("Hull(sphere): valid mesh, STL + 3MF round-trip")
-	void testHullSphereRoundTrip(@TempDir Path tmpDir) throws Throwable {
+	void testHullSphereRoundTrip() throws Throwable {
 		java.lang.foreign.MemorySegment sphere = makeSphere();
 		java.lang.foreign.MemorySegment result = null;
 		java.lang.foreign.MemorySegment stlRe = null;
@@ -421,7 +423,7 @@ class ManifoldBindingsTest {
 	@Test
 	@Order(42)
 	@DisplayName("BatchHull([cube, sphere]): valid mesh, STL + 3MF round-trip")
-	void testBatchHullRoundTrip(@TempDir Path tmpDir) throws Throwable {
+	void testBatchHullRoundTrip() throws Throwable {
 		java.lang.foreign.MemorySegment cube = makeCube();
 		java.lang.foreign.MemorySegment sphere = makeSphere();
 		java.lang.foreign.MemorySegment result = null;
@@ -460,7 +462,7 @@ class ManifoldBindingsTest {
 	@Test
 	@Order(50)
 	@DisplayName("3MF multi-mesh: export cube+sphere, re-import both objects")
-	void testMultiMesh3mfRoundTrip(@TempDir Path tmpDir) throws Throwable {
+	void testMultiMesh3mfRoundTrip() throws Throwable {
 		java.lang.foreign.MemorySegment cube = makeCube();
 		java.lang.foreign.MemorySegment sphere = makeSphere();
 		ArrayList<java.lang.foreign.MemorySegment> imported = null;
@@ -508,7 +510,7 @@ class ManifoldBindingsTest {
 	@Test
 	@Order(60)
 	@DisplayName("STL file size: matches 80 + 4 + triCount * 50 formula")
-	void testStlFileSizeFormula(@TempDir Path tmpDir) throws Throwable {
+	void testStlFileSizeFormula() throws Throwable {
 		java.lang.foreign.MemorySegment cube = makeCube();
 		try {
 			File stlFile = tmpDir.resolve("cube_size.stl").toFile();
@@ -525,7 +527,7 @@ class ManifoldBindingsTest {
 	@Test
 	@Order(61)
 	@DisplayName("3MF file: is a valid ZIP archive containing 3D/3dmodel.model")
-	void testThreeMfIsValidZip(@TempDir Path tmpDir) throws Throwable {
+	void testThreeMfIsValidZip() throws Throwable {
 		java.lang.foreign.MemorySegment sphere = makeSphere();
 		try {
 			File threeMfFile = tmpDir.resolve("sphere.3mf").toFile();
@@ -840,7 +842,7 @@ class ManifoldBindingsTest {
 	@Test
 	@Order(90)
 	@DisplayName("Load 5 STLs (cube, sphere, union, diff, intersect) → save as multi-part 3MF → verify")
-	void testMultiStlToMultiPart3mf(@TempDir Path tmpDir) throws Throwable {
+	void testMultiStlToMultiPart3mf() throws Throwable {
 
 		// ── 1. Build all five source manifolds ────────────────────────────
 		java.lang.foreign.MemorySegment cube = makeCube();
