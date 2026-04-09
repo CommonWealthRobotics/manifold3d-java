@@ -5,6 +5,7 @@ import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
 
 import com.cadoodlecad.manifold.ManifoldBindings;
+import com.cadoodlecad.manifold.ManifoldBindings.MeshData64;
 
 import java.io.File;
 import java.lang.foreign.MemorySegment;
@@ -129,6 +130,32 @@ class ManifoldBindingsTest {
 						+ ") is outside expected range relative to original (" + origVerts + ")");
 
 		return reimported;
+	}
+	
+	@Test
+	public void testMeshGL64() throws Throwable{
+		java.lang.foreign.MemorySegment cube = makeCube();
+		MemorySegment loaded=null;
+		try {
+			assertMeshValid(cube, "Cube");
+			// A cube has 8 vertices and 12 triangles (6 faces × 2)
+			assertEquals(8, mb.numVert(cube), "Cube should have 8 vertices");
+			assertEquals(12, mb.numTri(cube), "Cube should have 12 triangles");
+			
+			MeshData64 meshgl = mb.exportMeshGL64(cube);
+			double[] verts = meshgl.vertices(); // flat [x0,y0,z0, x1,y1,z1, ...]
+			long[] tris = meshgl.triangles(); // flat [i0,i1,i2, i3,i4,i5, ...]
+			int triCount = meshgl.triCount();
+			loaded = mb.importMeshGL64(verts, tris, triCount, triCount);
+			
+			MeshData64 meshglLoaded = mb.exportMeshGL64(loaded);
+			double[] vertsl = meshglLoaded.vertices(); // flat [x0,y0,z0, x1,y1,z1, ...]
+			long[] trisl = meshglLoaded.triangles(); // flat [i0,i1,i2, i3,i4,i5, ...]
+			int triCountl = meshglLoaded.triCount();
+		} finally {
+			mb.safeDelete(cube);
+			mb.safeDelete(loaded);
+		}
 	}
 
 	/**
