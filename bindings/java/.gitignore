@@ -1,4 +1,4 @@
 /target/
 /pom.xml.versionsBackup
-/union.3mf
-/union.stl
+/*.3mf
+/*.stl
