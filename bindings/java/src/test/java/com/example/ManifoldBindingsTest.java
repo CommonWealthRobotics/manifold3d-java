@@ -1,13 +1,14 @@
 package com.example;
 
 
-
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
 
 import com.cadoodlecad.manifold.ManifoldBindings;
 
 import java.io.File;
+import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
 import java.nio.file.Path;
 import java.util.ArrayList;
 
@@ -616,7 +617,7 @@ class ManifoldBindingsTest {
 
 			// ── vertex count ───────────────────────────────────────────────
 			// Manifold may emit 4 or 5 points (last may repeat first to close)
-			assertTrue(pts.length ==8,
+			assertTrue(pts.length == 8,
 					"Cube contour must have 4 unique corners, 4 midpoints (got " + pts.length + ")");
 
 			int unique = pts.length;
