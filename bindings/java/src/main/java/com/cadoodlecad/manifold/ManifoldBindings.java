@@ -578,25 +578,25 @@ public class ManifoldBindings {
 				meshGL = (MemorySegment) mh.invoke(meshGLmem, vertPtr, nVerts, 3L, triPtr, nTris);
 
 				MemorySegment mergedMem = (MemorySegment) functions.get("manifold_alloc_meshgl64").invoke();
-				MemorySegment merged = null;
 
 				try {
-					merged = (MemorySegment) functions.get("manifold_meshgl64_merge").invoke(mergedMem, meshGL);
+					functions.get("manifold_meshgl64_merge").invoke(mergedMem, meshGL);
 
 					MemorySegment manMem = (MemorySegment) functions.get("manifold_alloc_manifold").invoke();
-					MemorySegment result = (MemorySegment) functions.get("manifold_of_meshgl64").invoke(manMem, merged);
+					MemorySegment result = (MemorySegment) functions.get("manifold_of_meshgl64").invoke(manMem, mergedMem);
 
 					try {
-						functions.get("manifold_delete_meshgl64").invoke(meshGL);
+						functions.get("manifold_delete_meshgl64").invoke(mergedMem);
+						mergedMem=null;
 					} catch (Throwable ignored) {
 					}
 
 					return result;
 
 				} catch (Throwable e) {
-					if (merged != null)
+					if (mergedMem != null)
 						try {
-							functions.get("manifold_delete_meshgl64").invoke(merged);
+							functions.get("manifold_delete_meshgl64").invoke(mergedMem);
 						} catch (Throwable ignored) {
 						}
 					throw e;
