@@ -146,13 +146,13 @@ class ManifoldBindingsTest {
 			MeshData64 meshgl = mb.exportMeshGL64(cube);
 			double[] verts = meshgl.vertices(); // flat [x0,y0,z0, x1,y1,z1, ...]
 			long[] tris = meshgl.triangles(); // flat [i0,i1,i2, i3,i4,i5, ...]
-			int triCount = meshgl.triCount();
+			long triCount = meshgl.triCount();
 			loaded = mb.importMeshGL64(verts, tris, triCount, triCount);
 
 			MeshData64 meshglLoaded = mb.exportMeshGL64(loaded);
 			// double[] vertsl = meshglLoaded.vertices(); // flat [x0,y0,z0, x1,y1,z1, ...]
 			// long[] trisl = meshglLoaded.triangles(); // flat [i0,i1,i2, i3,i4,i5, ...]
-			int triCountl = meshglLoaded.triCount();
+			long triCountl = meshglLoaded.triCount();
 			assertEquals(triCountl, triCount, "Matching trinagle count");
 		} finally {
 			mb.safeDelete(cube);

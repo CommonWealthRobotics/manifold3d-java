@@ -546,17 +546,17 @@ public class ManifoldBindings {
 		}
 	}
 
-	private void deleteMeshGL64(MemorySegment seg) {
-		if (seg == null)
-			return;
-		try {
-			functions.get("manifold_delete_meshgl64").invoke(seg);
-		} catch (Throwable ignored) {
-		}
-	}
+//	private void deleteMeshGL64(MemorySegment seg) {
+//		if (seg == null)
+//			return;
+//		try {
+//			functions.get("manifold_delete_meshgl64").invoke(seg);
+//		} catch (Throwable ignored) {
+//		}
+//	}
 
 	// Data structure
-	public record MeshData64(double[] vertices, long[] triangles, int vertCount, int triCount) {
+	public record MeshData64(double[] vertices, long[] triangles, long vertCount, long triCount) {
 	}
 
 	public MemorySegment importMeshGL64(double[] vertices, long[] triangles, long nVerts, long nTris) throws Throwable {
