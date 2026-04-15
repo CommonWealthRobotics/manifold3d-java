@@ -13,14 +13,6 @@ import java.io.*;
 import java.lang.foreign.MemorySegment;
 import java.nio.*;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.zip.*;
-import java.io.*;
-import java.lang.foreign.MemorySegment;
-import java.nio.*;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.zip.*;
 
@@ -546,114 +538,6 @@ public class ManifoldBindings {
 		}
 	}
 
-	private void deleteMeshGL64(MemorySegment seg) {
-		if (seg == null)
-			return;
-		try {
-			functions.get("manifold_delete_meshgl64").invoke(seg);
-		} catch (Throwable ignored) {
-		}
-	}
-
-	// Data structure
-	public record MeshData64(double[] vertices, long[] triangles, int vertCount, int triCount) {
-	}
-
-	public MemorySegment importMeshGL64(double[] vertices, long[] triangles, long nVerts, long nTris) throws Throwable {
-		MethodHandle mh = functions.get("manifold_meshgl64");
-		if (mh == null)
-			throw new RuntimeException("manifold_meshgl64 not found");
-
-		try (Arena arena = Arena.ofConfined()) {
-			MemorySegment vertPtr = arena.allocate(3 * nVerts * Double.BYTES);
-			vertPtr.copyFrom(MemorySegment.ofArray(vertices));
-
-			MemorySegment triPtr = arena.allocate(3 * nTris * Long.BYTES);
-			triPtr.copyFrom(MemorySegment.ofArray(triangles));
-
-			MemorySegment meshGLmem = (MemorySegment) functions.get("manifold_alloc_meshgl64").invoke();
-			MemorySegment meshGL = null;
-
-			try {
-				meshGL = (MemorySegment) mh.invoke(meshGLmem, vertPtr, nVerts, 3L, triPtr, nTris);
-
-				MemorySegment mergedMem = (MemorySegment) functions.get("manifold_alloc_meshgl64").invoke();
-				MemorySegment merged = null;
-
-				try {
-					merged = (MemorySegment) functions.get("manifold_meshgl64_merge").invoke(mergedMem, meshGL);
-
-					MemorySegment manMem = (MemorySegment) functions.get("manifold_alloc_manifold").invoke();
-					MemorySegment result = (MemorySegment) functions.get("manifold_of_meshgl64").invoke(manMem, merged);
-
-					try {
-						functions.get("manifold_delete_meshgl64").invoke(meshGL);
-					} catch (Throwable ignored) {
-					}
-
-					return result;
-
-				} catch (Throwable e) {
-					if (merged != null)
-						try {
-							functions.get("manifold_delete_meshgl64").invoke(merged);
-						} catch (Throwable ignored) {
-						}
-					throw e;
-				}
-			} catch (Throwable e) {
-				if (meshGL != null)
-					try {
-						functions.get("manifold_delete_meshgl64").invoke(meshGL);
-					} catch (Throwable ignored) {
-					}
-				throw e;
-			}
-		}
-	}
-
-	public MeshData64 exportMeshGL64(MemorySegment manifold) throws Throwable {
-		MemorySegment mem = (MemorySegment) functions.get("manifold_alloc_meshgl64").invoke();
-		MemorySegment meshGL = (MemorySegment) functions.get("manifold_get_meshgl64").invoke(mem, manifold);
-
-		try {
-			long numVert = (long) functions.get("manifold_meshgl64_num_vert").invoke(meshGL);
-			long numTri = (long) functions.get("manifold_meshgl64_num_tri").invoke(meshGL);
-			long numProp = (long) functions.get("manifold_meshgl64_num_prop").invoke(meshGL);
-
-			double[] vertices = new double[(int) (3 * numVert)];
-			long[] triangles = new long[(int) (3 * numTri)];
-
-			try (Arena temp = Arena.ofConfined()) {
-				if (numVert > 0) {
-					long vertLen = (long) functions.get("manifold_meshgl64_vert_properties_length").invoke(meshGL);
-					MemorySegment tempMem = temp.allocate(vertLen * Double.BYTES);
-					functions.get("manifold_meshgl64_vert_properties").invoke(tempMem, meshGL);
-
-					for (int i = 0; i < numVert; i++)
-						for (int j = 0; (j < 3) && (j < numProp); j++)
-							vertices[i * 3 + j] = tempMem.getAtIndex(ValueLayout.JAVA_DOUBLE, i * numProp + j);
-				}
-
-				if (numTri > 0) {
-					long triLen = (long) functions.get("manifold_meshgl64_tri_length").invoke(meshGL);
-					MemorySegment tempMem = temp.allocate(triLen * Long.BYTES);
-					functions.get("manifold_meshgl64_tri_verts").invoke(tempMem, meshGL);
-
-					for (int i = 0; i < triLen; i++)
-						triangles[i] = tempMem.getAtIndex(ValueLayout.JAVA_LONG, i);
-				}
-			}
-
-			return new MeshData64(vertices, triangles, (int) numVert, (int) numTri);
-
-		} finally {
-			try {
-				functions.get("manifold_delete_meshgl64").invoke(meshGL);
-			} catch (Throwable ignored) {
-			}
-		}
-	}
 
 	// load
 	private void load(String name, MemoryLayout returnLayout, MemoryLayout... argLayouts) {
@@ -1870,6 +1754,105 @@ public class ManifoldBindings {
 
 	/** Flat, unindexed or indexed mesh arrays used only during file parsing. */
 	private record RawMesh(float[] vertices, int[] triangles) {
+	}
+	// Data structure
+	public record MeshData64(double[] vertices, long[] triangles, int vertCount, int triCount) {
+	}
+
+	public MemorySegment importMeshGL64(double[] vertices, long[] triangles, long nVerts, long nTris) throws Throwable {
+		MethodHandle mh = functions.get("manifold_meshgl64");
+		if (mh == null)
+			throw new RuntimeException("manifold_meshgl64 not found");
+
+		try (Arena arena = Arena.ofConfined()) {
+			MemorySegment vertPtr = arena.allocate(3 * nVerts * Double.BYTES);
+			vertPtr.copyFrom(MemorySegment.ofArray(vertices));
+
+			MemorySegment triPtr = arena.allocate(3 * nTris * Long.BYTES);
+			triPtr.copyFrom(MemorySegment.ofArray(triangles));
+
+			MemorySegment meshGLmem = (MemorySegment) functions.get("manifold_alloc_meshgl64").invoke();
+			MemorySegment meshGL = null;
+
+			try {
+				meshGL = (MemorySegment) mh.invoke(meshGLmem, vertPtr, nVerts, 3L, triPtr, nTris);
+
+				MemorySegment mergedMem = (MemorySegment) functions.get("manifold_alloc_meshgl64").invoke();
+				MemorySegment merged = null;
+
+				try {
+					merged = (MemorySegment) functions.get("manifold_meshgl64_merge").invoke(mergedMem, meshGL);
+
+					MemorySegment manMem = (MemorySegment) functions.get("manifold_alloc_manifold").invoke();
+					MemorySegment result = (MemorySegment) functions.get("manifold_of_meshgl64").invoke(manMem, merged);
+
+					try {
+						functions.get("manifold_delete_meshgl64").invoke(meshGL);
+					} catch (Throwable ignored) {
+					}
+
+					return result;
+
+				} catch (Throwable e) {
+					if (merged != null)
+						try {
+							functions.get("manifold_delete_meshgl64").invoke(merged);
+						} catch (Throwable ignored) {
+						}
+					throw e;
+				}
+			} catch (Throwable e) {
+				if (meshGL != null)
+					try {
+						functions.get("manifold_delete_meshgl64").invoke(meshGL);
+					} catch (Throwable ignored) {
+					}
+				throw e;
+			}
+		}
+	}
+
+	public MeshData64 exportMeshGL64(MemorySegment manifold) throws Throwable {
+		MemorySegment mem = (MemorySegment) functions.get("manifold_alloc_meshgl64").invoke();
+		MemorySegment meshGL = (MemorySegment) functions.get("manifold_get_meshgl64").invoke(mem, manifold);
+
+		try {
+			long numVert = (long) functions.get("manifold_meshgl64_num_vert").invoke(meshGL);
+			long numTri = (long) functions.get("manifold_meshgl64_num_tri").invoke(meshGL);
+			long numProp = (long) functions.get("manifold_meshgl64_num_prop").invoke(meshGL);
+
+			double[] vertices = new double[(int) (3 * numVert)];
+			long[] triangles = new long[(int) (3 * numTri)];
+
+			try (Arena temp = Arena.ofConfined()) {
+				if (numVert > 0) {
+					long vertLen = (long) functions.get("manifold_meshgl64_vert_properties_length").invoke(meshGL);
+					MemorySegment tempMem = temp.allocate(vertLen * Double.BYTES);
+					functions.get("manifold_meshgl64_vert_properties").invoke(tempMem, meshGL);
+
+					for (int i = 0; i < numVert; i++)
+						for (int j = 0; (j < 3) && (j < numProp); j++)
+							vertices[i * 3 + j] = tempMem.getAtIndex(ValueLayout.JAVA_DOUBLE, i * numProp + j);
+				}
+
+				if (numTri > 0) {
+					long triLen = (long) functions.get("manifold_meshgl64_tri_length").invoke(meshGL);
+					MemorySegment tempMem = temp.allocate(triLen * Long.BYTES);
+					functions.get("manifold_meshgl64_tri_verts").invoke(tempMem, meshGL);
+
+					for (int i = 0; i < triLen; i++)
+						triangles[i] = tempMem.getAtIndex(ValueLayout.JAVA_LONG, i);
+				}
+			}
+
+			return new MeshData64(vertices, triangles, (int) numVert, (int) numTri);
+
+		} finally {
+			try {
+				functions.get("manifold_delete_meshgl64").invoke(meshGL);
+			} catch (Throwable ignored) {
+			}
+		}
 	}
 
 }
