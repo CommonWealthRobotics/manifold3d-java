@@ -125,7 +125,6 @@ public class ManifoldBindings {
 	public static void loadNativeLibrarys(File cacheDirectory) throws Exception {
 		loadNativeLibrary("libmanifold", cacheDirectory);
 		loadNativeLibrary("libmanifoldc", cacheDirectory);
-		// loadNativeLibrary("libmeshIO", cacheDirectory);
 	}
 
 	public ManifoldBindings() throws Exception {
@@ -1068,113 +1067,6 @@ public class ManifoldBindings {
 		return (MemorySegment) functions.get("manifold_bounding_box").invoke(box, m);
 	}
 
-	public MemorySegment importMeshGL(float[] vertices, int[] triangles, long nVerts, long nTris) throws Throwable {
-
-		if (vertices.length < nVerts * 3 || triangles.length < nTris * 3) {
-			throw new IllegalArgumentException("Array length mismatch");
-		}
-
-		MethodHandle mh = functions.get("manifold_meshgl");
-		if (mh == null)
-			throw new RuntimeException("manifold_meshgl not available in library");
-
-		try (Arena tempArena = Arena.ofConfined()) {
-
-			MemorySegment vertPtr = tempArena.allocate(nVerts * 3 * Float.BYTES);
-			vertPtr.copyFrom(MemorySegment.ofArray(vertices));
-
-			MemorySegment triPtr = tempArena.allocate(nTris * 3 * Integer.BYTES);
-			triPtr.copyFrom(MemorySegment.ofArray(triangles));
-
-			// Allocate both up front so cleanup is uniform
-			MemorySegment meshGLMem = (MemorySegment) functions.get("manifold_alloc_meshgl").invoke();
-
-			MemorySegment mergedMem = (MemorySegment) functions.get("manifold_alloc_meshgl").invoke();
-			MemorySegment merged = null;
-			MemorySegment meshGL = null;
-			MemorySegment manMem = null;
-			MemorySegment manifold = null;
-			try {
-				// Both of these likely return the same pointer they were given
-				meshGL = (MemorySegment) mh.invoke(meshGLMem, vertPtr, nVerts, 3L, triPtr, nTris);
-				merged = (MemorySegment) functions.get("manifold_meshgl_merge").invoke(mergedMem, meshGL);
-
-				manMem = (MemorySegment) functions.get("manifold_alloc_manifold").invoke();
-				manifold = (MemorySegment) functions.get("manifold_of_meshgl").invoke(manMem, merged);
-				//				System.out.println("meshGLMem addr: " + meshGLMem.address());
-				//				System.out.println("meshGL    addr: " + meshGL.address());
-				//				System.out.println("mergedMem addr: " + mergedMem.address());
-				//				System.out.println("merged    addr: " + merged.address());
-				//				System.out.println("manMem    addr: " + manMem.address());
-				//				System.out.println("manifold  addr: " + manifold.address());
-				return manifold;
-
-			} finally {
-				// Collect unique addresses to delete
-				Set<Long> freed = new HashSet<>();
-				for (MemorySegment seg : new MemorySegment[] { merged, meshGL }) {
-					if (seg == null)
-						continue;
-					if (seg.address() == manifold.address())
-						continue;
-					if (freed.add(seg.address())) { // add() returns false if already present
-						//System.out.print("\nFreeing: " + seg.address());
-						functions.get("manifold_delete_meshgl").invoke(seg);
-						//System.out.print(" done\n ");
-
-					}
-				}
-				freed.clear();
-			}
-		}
-	}
-
-	public MeshData exportMeshGL(MemorySegment manifold) throws Throwable {
-
-		MemorySegment mem = (MemorySegment) functions.get("manifold_alloc_meshgl").invoke();
-		MemorySegment meshGL = (MemorySegment) functions.get("manifold_get_meshgl").invoke(mem, manifold);
-
-		try {
-			long numVert = (long) functions.get("manifold_meshgl_num_vert").invoke(meshGL);
-			long numTri = (long) functions.get("manifold_meshgl_num_tri").invoke(meshGL);
-			long numProp = (long) functions.get("manifold_meshgl_num_prop").invoke(meshGL);
-
-			float[] vertices = new float[(int) (numVert * 3)];
-			int[] triangles = new int[(int) (numTri * 3)];
-
-			// Use temporary confined arena for large temporary allocations
-			try (Arena tempArena = Arena.ofConfined()) {
-				if (numVert > 0) {
-					long vertLen = (long) functions.get("manifold_meshgl_vert_properties_length").invoke(meshGL);
-					MemorySegment tempMem = tempArena.allocate(vertLen * Float.BYTES);
-					functions.get("manifold_meshgl_vert_properties").invoke(tempMem, meshGL);
-
-					for (int i = 0; i < numVert; i++)
-						for (int j = 0; (j < 3) && (j < numProp); j++)
-							vertices[i * 3 + j] = tempMem.getAtIndex(ValueLayout.JAVA_FLOAT, i * numProp + j);
-				}
-
-				if (numTri > 0) {
-					long triLen = (long) functions.get("manifold_meshgl_tri_length").invoke(meshGL);
-					MemorySegment tempMem = tempArena.allocate(triLen * Integer.BYTES);
-					functions.get("manifold_meshgl_tri_verts").invoke(tempMem, meshGL);
-
-					for (int i = 0; i < triLen; i++)
-						triangles[i] = tempMem.getAtIndex(ValueLayout.JAVA_INT, i);
-				}
-			} // tempArena closed here, memory freed automatically
-
-			return new MeshData(vertices, triangles, (int) numVert, (int) numTri);
-
-		} finally {
-			// Guaranteed cleanup even if exceptions occur above
-			try {
-				functions.get("manifold_delete_meshgl").invoke(meshGL);
-			} catch (Throwable ignored) {
-			}
-		}
-	}
-
 	public javafx.geometry.BoundingBox getJavaFXBounds(MemorySegment m) {
 
 		MemorySegment box = null;
@@ -1332,9 +1224,6 @@ public class ManifoldBindings {
 		return loaded;
 	}
 
-	public record MeshData(float[] vertices, int[] triangles, int vertCount, int triCount) {
-	}
-
 
 	/**
 	 * Lightweight, zero-dependency library for reading and writing STL and 3MF mesh files,
@@ -1403,8 +1292,8 @@ public class ManifoldBindings {
 	 * @param file     destination file (created or overwritten)
 	 */
 	public void exportSTL(MemorySegment manifold, File file) throws Throwable {
-		ManifoldBindings.MeshData mesh = this.exportMeshGL(manifold);
-		writeBinarySTL(mesh.vertices(), mesh.triangles(), mesh.vertCount(), mesh.triCount(), file);
+		MeshData64 mesh = this.exportMeshGL64(manifold);
+		writeBinarySTL(mesh.vertices(), mesh.triangles(),(int) mesh.vertCount(), (int)mesh.triCount(), file);
 	}
 
 	/**
@@ -1426,9 +1315,9 @@ public class ManifoldBindings {
 		if (manifolds == null || manifolds.isEmpty())
 			throw new IllegalArgumentException("manifolds list must not be empty");
 
-		List<ManifoldBindings.MeshData> meshes = new ArrayList<>(manifolds.size());
+		List<MeshData64> meshes = new ArrayList<>(manifolds.size());
 		for (MemorySegment seg : manifolds)
-			meshes.add(this.exportMeshGL(seg));
+			meshes.add(this.exportMeshGL64(seg));
 
 		write3MFInternal(meshes, file);
 	}
@@ -1449,8 +1338,8 @@ public class ManifoldBindings {
 	 *         any {@link ManifoldBindings} operation
 	 */
 	public MemorySegment importSTL(File file) throws Throwable {
-		RawMesh raw = parseSTL(file);
-		return this.importMeshGL(raw.vertices, raw.triangles, raw.vertices.length / 3L, raw.triangles.length / 3L);
+		MeshData64 raw = parseSTL(file);
+		return this.importMeshGL64(raw.vertices, raw.triangles, raw.vertices.length / 3L, raw.triangles.length / 3L);
 	}
 
 	/**
@@ -1466,10 +1355,10 @@ public class ManifoldBindings {
 	 *         never empty (throws if the file contains no objects)
 	 */
 	public ArrayList<MemorySegment> import3MF(File file) throws Throwable {
-		List<RawMesh> objects = parse3MF(file);
+		List<MeshData64> objects = parse3MF(file);
 		ArrayList<MemorySegment> result = new ArrayList<>(objects.size());
-		for (RawMesh raw : objects)
-			result.add(this.importMeshGL(raw.vertices, raw.triangles, raw.vertices.length / 3L,
+		for (MeshData64 raw : objects)
+			result.add(this.importMeshGL64(raw.vertices, raw.triangles, raw.vertices.length / 3L,
 					raw.triangles.length / 3L));
 		return result;
 	}
@@ -1499,7 +1388,7 @@ public class ManifoldBindings {
 	// STL – binary read
 	// =========================================================================
 
-	private static RawMesh readBinarySTL(File file) throws IOException {
+	private static MeshData64 readBinarySTL(File file) throws IOException {
 		try (DataInputStream dis = new DataInputStream(new BufferedInputStream(new FileInputStream(file)))) {
 
 			dis.skipNBytes(80); // skip header text
@@ -1507,8 +1396,8 @@ public class ManifoldBindings {
 
 			// Binary STL is unindexed: each facet has 3 independent vertices.
 			// We emit a sequential index array; importMeshGL → merge will weld duplicates.
-			float[] verts = new float[triCount * 9]; // 3 verts × 3 floats
-			int[] tris = new int[triCount * 3];
+			double[] verts = new double[triCount * 9]; // 3 verts × 3 floats
+			long[] tris = new long[triCount * 3];
 
 			byte[] buf = new byte[50];
 			ByteBuffer bb = ByteBuffer.wrap(buf).order(ByteOrder.LITTLE_ENDIAN);
@@ -1531,7 +1420,7 @@ public class ManifoldBindings {
 				tris[i * 3 + 1] = i * 3 + 1;
 				tris[i * 3 + 2] = i * 3 + 2;
 			}
-			return new RawMesh(verts, tris);
+			return new MeshData64(verts, tris,(long)verts.length/3,(long)tris.length/3);
 		}
 	}
 
@@ -1539,7 +1428,7 @@ public class ManifoldBindings {
 	// STL – ASCII read
 	// =========================================================================
 
-	private static RawMesh readAsciiSTL(File file) throws IOException {
+	private static MeshData64 readAsciiSTL(File file) throws IOException {
 		List<Float> vList = new ArrayList<>();
 		List<Integer> tList = new ArrayList<>();
 		int vertIdx = 0;
@@ -1566,20 +1455,20 @@ public class ManifoldBindings {
 			}
 		}
 
-		float[] verts = new float[vList.size()];
+		double[] verts = new double[vList.size()];
 		for (int i = 0; i < vList.size(); i++)
 			verts[i] = vList.get(i);
-		int[] tris = new int[tList.size()];
+		long[] tris = new long[tList.size()];
 		for (int i = 0; i < tList.size(); i++)
 			tris[i] = tList.get(i);
-		return new RawMesh(verts, tris);
+		return new MeshData64(verts, tris,(long) verts.length/3,(long)tris.length/3);
 	}
 
 	// =========================================================================
 	// STL – combined entry point
 	// =========================================================================
 
-	private static RawMesh parseSTL(File file) throws IOException {
+	private static MeshData64 parseSTL(File file) throws IOException {
 		try (FileInputStream fis = new FileInputStream(file)) {
 			byte[] header = fis.readNBytes(80);
 			return looksLikeAsciiSTL(header, file.length()) ? readAsciiSTL(file) : readBinarySTL(file);
@@ -1590,7 +1479,7 @@ public class ManifoldBindings {
 	// STL – binary write
 	// =========================================================================
 
-	private static void writeBinarySTL(float[] verts, int[] tris, int vertCount, int triCount, File file)
+	private static void writeBinarySTL(double[] verts, long[] tris, int vertCount, int triCount, File file)
 			throws IOException {
 		// Layout: 80-byte header | 4-byte tri count | triCount × 50-byte records
 		ByteBuffer buf = ByteBuffer.allocate(84 + triCount * 50).order(ByteOrder.LITTLE_ENDIAN);
@@ -1602,39 +1491,39 @@ public class ManifoldBindings {
 		buf.putInt(triCount);
 
 		for (int i = 0; i < triCount; i++) {
-			int i0 = tris[i * 3] * 3;
-			int i1 = tris[i * 3 + 1] * 3;
-			int i2 = tris[i * 3 + 2] * 3;
+			int i0 = (int)tris[i * 3] * 3;
+			int i1 =  (int)tris[i * 3 + 1] * 3;
+			int i2 =  (int)tris[i * 3 + 2] * 3;
 
-			float ax = verts[i0], ay = verts[i0 + 1], az = verts[i0 + 2];
-			float bx = verts[i1], by = verts[i1 + 1], bz = verts[i1 + 2];
-			float cx = verts[i2], cy = verts[i2 + 1], cz = verts[i2 + 2];
+			double ax = verts[i0], ay = verts[i0 + 1], az = verts[i0 + 2];
+			double bx = verts[i1], by = verts[i1 + 1], bz = verts[i1 + 2];
+			double cx = verts[i2], cy = verts[i2 + 1], cz = verts[i2 + 2];
 
 			// Normal = (b−a) × (c−a), normalised
-			float ux = bx - ax, uy = by - ay, uz = bz - az;
-			float vx = cx - ax, vy = cy - ay, vz = cz - az;
-			float nx = uy * vz - uz * vy;
-			float ny = uz * vx - ux * vz;
-			float nz = ux * vy - uy * vx;
-			float len = (float) Math.sqrt(nx * nx + ny * ny + nz * nz);
+			double ux = bx - ax, uy = by - ay, uz = bz - az;
+			double vx = cx - ax, vy = cy - ay, vz = cz - az;
+			double nx = uy * vz - uz * vy;
+			double ny = uz * vx - ux * vz;
+			double nz = ux * vy - uy * vx;
+			double len =  Math.sqrt(nx * nx + ny * ny + nz * nz);
 			if (len > 1e-12f) {
 				nx /= len;
 				ny /= len;
 				nz /= len;
 			}
 
-			buf.putFloat(nx);
-			buf.putFloat(ny);
-			buf.putFloat(nz);
-			buf.putFloat(ax);
-			buf.putFloat(ay);
-			buf.putFloat(az);
-			buf.putFloat(bx);
-			buf.putFloat(by);
-			buf.putFloat(bz);
-			buf.putFloat(cx);
-			buf.putFloat(cy);
-			buf.putFloat(cz);
+			buf.putFloat((float) nx);
+			buf.putFloat((float)ny);
+			buf.putFloat((float)nz);
+			buf.putFloat((float)ax);
+			buf.putFloat((float)ay);
+			buf.putFloat((float)az);
+			buf.putFloat((float)bx);
+			buf.putFloat((float)by);
+			buf.putFloat((float)bz);
+			buf.putFloat((float)cx);
+			buf.putFloat((float)cy);
+			buf.putFloat((float)cz);
 			buf.putShort((short) 0); // attribute byte count
 		}
 
@@ -1647,7 +1536,7 @@ public class ManifoldBindings {
 	// 3MF – read
 	// =========================================================================
 
-	private static List<RawMesh> parse3MF(File file) throws IOException {
+	private static List<MeshData64> parse3MF(File file) throws IOException {
 		return parseModelXml(extract3DModel(file));
 	}
 
@@ -1673,8 +1562,8 @@ public class ManifoldBindings {
 	 * within each object are local (start at 0), which is correct because each
 	 * {@link RawMesh} is independently imported via {@code importMeshGL}.
 	 */
-	private static List<RawMesh> parseModelXml(String xml) {
-		List<RawMesh> result = new ArrayList<>();
+	private static List<MeshData64> parseModelXml(String xml) {
+		List<MeshData64> result = new ArrayList<>();
 		List<Float> verts = null;
 		List<Integer> tris = null;
 		int pos = 0;
@@ -1698,13 +1587,13 @@ public class ManifoldBindings {
 			} else if (tag.equals("/object")) {
 				// Closing </object> — finalise and store the mesh
 				if (verts != null && tris != null && !verts.isEmpty()) {
-					float[] va = new float[verts.size()];
+					double[] va = new double[verts.size()];
 					for (int i = 0; i < verts.size(); i++)
 						va[i] = verts.get(i);
-					int[] ta = new int[tris.size()];
+					long[] ta = new long[tris.size()];
 					for (int i = 0; i < tris.size(); i++)
 						ta[i] = tris.get(i);
-					result.add(new RawMesh(va, ta));
+					result.add(new MeshData64(va, ta,(long)(va.length/3),(long)(ta.length/3)));
 				}
 				verts = null;
 				tris = null;
@@ -1730,7 +1619,7 @@ public class ManifoldBindings {
 	// 3MF – write
 	// =========================================================================
 
-	private static void write3MFInternal(List<ManifoldBindings.MeshData> meshes, File file) throws IOException {
+	private static void write3MFInternal(List<MeshData64> meshes, File file) throws IOException {
 		writeZip3MF(file, build3MFModelXml(meshes));
 	}
 
@@ -1741,10 +1630,10 @@ public class ManifoldBindings {
 	 * All objects are referenced in the {@code <build>} section so that slicers
 	 * treat them as independent bodies within the same file.
 	 */
-	private static byte[] build3MFModelXml(List<ManifoldBindings.MeshData> meshes) {
+	private static byte[] build3MFModelXml(List<MeshData64> meshes) {
 		// Estimate capacity: fixed overhead + per-mesh overhead + per-vert/tri lines
 		int cap = 512;
-		for (ManifoldBindings.MeshData m : meshes)
+		for (MeshData64 m : meshes)
 			cap += 200 + m.vertCount() * 60 + m.triCount() * 55;
 		StringBuilder sb = new StringBuilder(cap);
 
@@ -1754,10 +1643,10 @@ public class ManifoldBindings {
 		sb.append("  <resources>\n");
 
 		for (int objIdx = 0; objIdx < meshes.size(); objIdx++) {
-			ManifoldBindings.MeshData mesh = meshes.get(objIdx);
+			ManifoldBindings.MeshData64 mesh = meshes.get(objIdx);
 			int objectId = objIdx + 1; // 3MF object IDs are 1-based
-			float[] verts = mesh.vertices();
-			int[] tris = mesh.triangles();
+			double[] verts = mesh.vertices();
+			long[] tris = mesh.triangles();
 
 			sb.append("    <object id=\"").append(objectId).append("\" type=\"model\">\n");
 			sb.append("      <mesh>\n");
@@ -1864,12 +1753,6 @@ public class ManifoldBindings {
 		return tag.substring(valStart + 1, valEnd);
 	}
 
-	// =========================================================================
-	// Internal mesh data holder
-	// =========================================================================
 
-	/** Flat, unindexed or indexed mesh arrays used only during file parsing. */
-	private record RawMesh(float[] vertices, int[] triangles) {
-	}
 
 }
