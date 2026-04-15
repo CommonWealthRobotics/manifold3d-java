@@ -2,14 +2,12 @@ package com.example;
 
 
 import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.io.TempDir;
 
 import com.cadoodlecad.manifold.ManifoldBindings;
 import com.cadoodlecad.manifold.ManifoldBindings.MeshData64;
 
 import java.io.File;
 import java.lang.foreign.MemorySegment;
-import java.lang.foreign.ValueLayout;
 import java.nio.file.Path;
 import java.util.ArrayList;
 
