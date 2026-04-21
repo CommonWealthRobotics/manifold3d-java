@@ -202,10 +202,9 @@ public class ManifoldBindings {
 		// x1, double y1, double z1, double x2, double y2, double z2, double x3, double
 		// y3, double z3, double x4, double y4, double z4);
 		load("manifold_transform", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-				ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE,
-				ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE,
-				ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE,
-				ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE);
+				ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE,
+				ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE,
+				ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE);
 
 		// ManifoldManifold* manifold_translate(void* mem, ManifoldManifold* m, double x, double y, double z);
 		load("manifold_translate", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
@@ -386,13 +385,12 @@ public class ManifoldBindings {
 
 		// ManifoldMeshGL64* manifold_meshgl64(void* mem, double* vert_props, size_t
 		// n_verts, size_t n_props, uint64_t* tri_verts, size_t n_tris);
-		load("manifold_meshgl64", ValueLayout.ADDRESS,
-				ValueLayout.ADDRESS,  // void* mem
-				ValueLayout.ADDRESS,  // double* vert_props
+		load("manifold_meshgl64", ValueLayout.ADDRESS, ValueLayout.ADDRESS, // void* mem
+				ValueLayout.ADDRESS, // double* vert_props
 				ValueLayout.JAVA_LONG, // size_t n_verts
 				ValueLayout.JAVA_LONG, // size_t n_props
-				ValueLayout.ADDRESS,  // uint64_t* tri_verts
-				ValueLayout.JAVA_LONG  // size_t n_tris
+				ValueLayout.ADDRESS, // uint64_t* tri_verts
+				ValueLayout.JAVA_LONG // size_t n_tris
 		);
 
 		// ===== Cleanup =====
@@ -414,6 +412,16 @@ public class ManifoldBindings {
 
 		// ManifoldManifold* manifold_hull_pts(void* mem, ManifoldVec3* pts, size_t count);
 		load("manifold_hull_pts", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG);
+		// ===== Static Quality Globals =====
+
+		// void manifold_set_circular_segments(int number);
+		loadVoid("manifold_set_circular_segments", ValueLayout.JAVA_INT);
+
+		// void manifold_set_min_circular_angle(double degrees);
+		loadVoid("manifold_set_min_circular_angle", ValueLayout.JAVA_DOUBLE);
+
+		// int manifold_get_circular_segments(double radius);
+		load("manifold_get_circular_segments", ValueLayout.JAVA_INT, ValueLayout.JAVA_DOUBLE);
 
 		System.out.println("Available Manifold functions: " + functions.keySet());
 	}
@@ -439,7 +447,36 @@ public class ManifoldBindings {
 			System.err.println("ERROR: Missing Manifold function " + name);
 		}
 	}
+	// ===== Static Quality Globals =====
 
+	/**
+	 * Sets the global number of circular segments used when generating cylinders,
+	 * spheres, and other round primitives. Call this BEFORE creating primitives.
+	 * Higher values produce smoother geometry but more triangles.
+	 * A value of 0 resets to the angle/length defaults.
+	 */
+	public void setCircularSegments(int segments) throws Throwable {
+		functions.get("manifold_set_circular_segments").invoke(segments);
+	}
+
+	/**
+	 * Sets the minimum angle (in degrees) between circular segments.
+	 * The actual segment count is the maximum implied by both this angle limit
+	 * and the edge-length limit. Smaller angles = more segments = smoother curves.
+	 * Default is ~1 degree.
+	 */
+	public void setMinCircularAngle(double degrees) throws Throwable {
+		functions.get("manifold_set_min_circular_angle").invoke(degrees);
+	}
+
+	/**
+	 * Returns the number of circular segments that would be used for a circle
+	 * of the given radius, given the current quality settings.
+	 * Useful for debugging or verifying your quality settings before building geometry.
+	 */
+	public int getCircularSegments(double radius) throws Throwable {
+		return (int) functions.get("manifold_get_circular_segments").invoke(radius);
+	}
 	// ===== Status =====
 
 	public ManifoldError status(MemorySegment m) throws Throwable {
@@ -679,8 +716,16 @@ public class ManifoldBindings {
 			functions.get("manifold_split").invoke(arena, firstMem, secondMem, a, b);
 			return new MemorySegment[] { firstMem, secondMem };
 		} catch (Throwable e) {
-			try { delete(firstMem); } catch (Throwable ignored) { ignored.printStackTrace(); }
-			try { delete(secondMem); } catch (Throwable ignored) { ignored.printStackTrace(); }
+			try {
+				delete(firstMem);
+			} catch (Throwable ignored) {
+				ignored.printStackTrace();
+			}
+			try {
+				delete(secondMem);
+			} catch (Throwable ignored) {
+				ignored.printStackTrace();
+			}
 			throw e;
 		}
 	}
@@ -788,11 +833,8 @@ public class ManifoldBindings {
 	public double[] boxDimensions(MemorySegment box) throws Throwable {
 		try (Arena arena = Arena.ofConfined()) {
 			MemorySegment dims = (MemorySegment) functions.get("manifold_box_dimensions").invoke(arena, box);
-			return new double[] {
-				dims.get(ValueLayout.JAVA_DOUBLE, 0),
-				dims.get(ValueLayout.JAVA_DOUBLE, 8),
-				dims.get(ValueLayout.JAVA_DOUBLE, 16)
-			};
+			return new double[] { dims.get(ValueLayout.JAVA_DOUBLE, 0), dims.get(ValueLayout.JAVA_DOUBLE, 8),
+					dims.get(ValueLayout.JAVA_DOUBLE, 16) };
 		}
 	}
 
@@ -872,18 +914,18 @@ public class ManifoldBindings {
 		long nEdge = numEdge(m);
 		long nProp = numProp(m);
 
-		long vertexData   = nVert * 24L;
+		long vertexData = nVert * 24L;
 		long halfedgeData = nEdge * 40L;
-		long faceData     = nTri  * 8L;
-		long edgeData     = nEdge * 8L;
+		long faceData = nTri * 8L;
+		long edgeData = nEdge * 8L;
 		long propertyData = nVert * nProp * 8L;
 
 		long meshglVertexData = nVert * Math.max(3, nProp) * 8L;
-		long meshglIndexData  = nTri  * 3L * 8L;
-		long meshglStruct     = meshGL64Size();
+		long meshglIndexData = nTri * 3L * 8L;
+		long meshglStruct = meshGL64Size();
 
 		long internalTotal = vertexData + halfedgeData + faceData + edgeData + propertyData;
-		long exportTotal   = meshglStruct + meshglVertexData + meshglIndexData;
+		long exportTotal = meshglStruct + meshglVertexData + meshglIndexData;
 		long manifoldHandle = manifoldSize();
 
 		long bvhOverhead = (long) (internalTotal * 0.25);
@@ -898,7 +940,8 @@ public class ManifoldBindings {
 	}
 
 	public void safeDelete(MemorySegment m) {
-		if (m == null) return;
+		if (m == null)
+			return;
 		try {
 			delete(m);
 		} catch (Throwable t) {
@@ -959,7 +1002,8 @@ public class ManifoldBindings {
 					// Clean up intermediates — skip if they alias the result
 					Set<Long> freed = new HashSet<>();
 					for (MemorySegment seg : new MemorySegment[] { merged, meshGL }) {
-						if (seg == null || seg.address() == result.address()) continue;
+						if (seg == null || seg.address() == result.address())
+							continue;
 						if (freed.add(seg.address()))
 							functions.get("manifold_delete_meshgl64").invoke(seg);
 					}
@@ -968,12 +1012,18 @@ public class ManifoldBindings {
 
 				} catch (Throwable e) {
 					if (merged != null)
-						try { functions.get("manifold_delete_meshgl64").invoke(merged); } catch (Throwable ignored) {}
+						try {
+							functions.get("manifold_delete_meshgl64").invoke(merged);
+						} catch (Throwable ignored) {
+						}
 					throw e;
 				}
 			} catch (Throwable e) {
 				if (meshGL != null)
-					try { functions.get("manifold_delete_meshgl64").invoke(meshGL); } catch (Throwable ignored) {}
+					try {
+						functions.get("manifold_delete_meshgl64").invoke(meshGL);
+					} catch (Throwable ignored) {
+					}
 				throw e;
 			}
 		}
@@ -992,11 +1042,11 @@ public class ManifoldBindings {
 
 		try {
 			long numVert = (long) functions.get("manifold_meshgl64_num_vert").invoke(meshGL);
-			long numTri  = (long) functions.get("manifold_meshgl64_num_tri").invoke(meshGL);
+			long numTri = (long) functions.get("manifold_meshgl64_num_tri").invoke(meshGL);
 			long numProp = (long) functions.get("manifold_meshgl64_num_prop").invoke(meshGL);
 
-			double[] vertices  = new double[(int) (numVert * 3)];
-			long[]   triangles = new long[(int) (numTri * 3)];
+			double[] vertices = new double[(int) (numVert * 3)];
+			long[] triangles = new long[(int) (numTri * 3)];
 
 			try (Arena temp = Arena.ofConfined()) {
 				if (numVert > 0) {
@@ -1040,7 +1090,8 @@ public class ManifoldBindings {
 	 * <p>{@code vertices} is a flat XYZ array of length {@code vertCount * 3}.
 	 * {@code triangles} is a flat index array of length {@code triCount * 3}.
 	 */
-	public record MeshData64(double[] vertices, long[] triangles, int vertCount, int triCount) {}
+	public record MeshData64(double[] vertices, long[] triangles, int vertCount, int triCount) {
+	}
 
 	// =========================================================================
 	// File I/O — STL and 3MF
@@ -1136,8 +1187,8 @@ public class ManifoldBindings {
 		List<RawMesh> objects = parse3MF(file);
 		ArrayList<MemorySegment> result = new ArrayList<>(objects.size());
 		for (RawMesh raw : objects)
-			result.add(this.importMeshGL64(raw.vertices, raw.triangles,
-					raw.vertices.length / 3L, raw.triangles.length / 3L));
+			result.add(this.importMeshGL64(raw.vertices, raw.triangles, raw.vertices.length / 3L,
+					raw.triangles.length / 3L));
 		return result;
 	}
 
@@ -1165,17 +1216,17 @@ public class ManifoldBindings {
 			int triCount = Integer.reverseBytes(dis.readInt());
 
 			double[] verts = new double[triCount * 9];
-			long[]   tris  = new long[triCount * 3];
+			long[] tris = new long[triCount * 3];
 
-			byte[]     buf = new byte[50];
-			ByteBuffer bb  = ByteBuffer.wrap(buf).order(ByteOrder.LITTLE_ENDIAN);
+			byte[] buf = new byte[50];
+			ByteBuffer bb = ByteBuffer.wrap(buf).order(ByteOrder.LITTLE_ENDIAN);
 
 			for (int i = 0; i < triCount; i++) {
 				dis.readFully(buf);
 				bb.rewind();
 				bb.position(12); // skip 3-float normal
 				int base = i * 9;
-				verts[base]     = bb.getFloat();
+				verts[base] = bb.getFloat();
 				verts[base + 1] = bb.getFloat();
 				verts[base + 2] = bb.getFloat();
 				verts[base + 3] = bb.getFloat();
@@ -1184,7 +1235,7 @@ public class ManifoldBindings {
 				verts[base + 6] = bb.getFloat();
 				verts[base + 7] = bb.getFloat();
 				verts[base + 8] = bb.getFloat();
-				tris[i * 3]     = i * 3;
+				tris[i * 3] = i * 3;
 				tris[i * 3 + 1] = i * 3 + 1;
 				tris[i * 3 + 2] = i * 3 + 2;
 			}
@@ -1197,8 +1248,8 @@ public class ManifoldBindings {
 	// =========================================================================
 
 	private static RawMesh readAsciiSTL(File file) throws IOException {
-		List<Double>  vList = new ArrayList<>();
-		List<Long>    tList = new ArrayList<>();
+		List<Double> vList = new ArrayList<>();
+		List<Long> tList = new ArrayList<>();
 		long vertIdx = 0;
 
 		try (BufferedReader br = new BufferedReader(
@@ -1258,13 +1309,13 @@ public class ManifoldBindings {
 		buf.putInt(triCount);
 
 		for (int i = 0; i < triCount; i++) {
-			int i0 = (int) tris[i * 3]     * 3;
+			int i0 = (int) tris[i * 3] * 3;
 			int i1 = (int) tris[i * 3 + 1] * 3;
 			int i2 = (int) tris[i * 3 + 2] * 3;
 
-			float ax = (float) verts[i0],     ay = (float) verts[i0 + 1], az = (float) verts[i0 + 2];
-			float bx = (float) verts[i1],     by = (float) verts[i1 + 1], bz = (float) verts[i1 + 2];
-			float cx = (float) verts[i2],     cy = (float) verts[i2 + 1], cz = (float) verts[i2 + 2];
+			float ax = (float) verts[i0], ay = (float) verts[i0 + 1], az = (float) verts[i0 + 2];
+			float bx = (float) verts[i1], by = (float) verts[i1 + 1], bz = (float) verts[i1 + 2];
+			float cx = (float) verts[i2], cy = (float) verts[i2 + 1], cz = (float) verts[i2 + 2];
 
 			float ux = bx - ax, uy = by - ay, uz = bz - az;
 			float vx = cx - ax, vy = cy - ay, vz = cz - az;
@@ -1272,12 +1323,24 @@ public class ManifoldBindings {
 			float ny = uz * vx - ux * vz;
 			float nz = ux * vy - uy * vx;
 			float len = (float) Math.sqrt(nx * nx + ny * ny + nz * nz);
-			if (len > 1e-12f) { nx /= len; ny /= len; nz /= len; }
+			if (len > 1e-12f) {
+				nx /= len;
+				ny /= len;
+				nz /= len;
+			}
 
-			buf.putFloat(nx); buf.putFloat(ny); buf.putFloat(nz);
-			buf.putFloat(ax); buf.putFloat(ay); buf.putFloat(az);
-			buf.putFloat(bx); buf.putFloat(by); buf.putFloat(bz);
-			buf.putFloat(cx); buf.putFloat(cy); buf.putFloat(cz);
+			buf.putFloat(nx);
+			buf.putFloat(ny);
+			buf.putFloat(nz);
+			buf.putFloat(ax);
+			buf.putFloat(ay);
+			buf.putFloat(az);
+			buf.putFloat(bx);
+			buf.putFloat(by);
+			buf.putFloat(bz);
+			buf.putFloat(cx);
+			buf.putFloat(cy);
+			buf.putFloat(cz);
 			buf.putShort((short) 0);
 		}
 
@@ -1313,33 +1376,37 @@ public class ManifoldBindings {
 	 * Triangle indices within each object are local (start at 0).
 	 */
 	private static List<RawMesh> parseModelXml(String xml) {
-		List<RawMesh>  result = new ArrayList<>();
-		List<Double>   verts  = null;
-		List<Long>     tris   = null;
+		List<RawMesh> result = new ArrayList<>();
+		List<Double> verts = null;
+		List<Long> tris = null;
 		int pos = 0, len = xml.length();
 
 		while (pos < len) {
 			int tagStart = xml.indexOf('<', pos);
-			if (tagStart < 0) break;
+			if (tagStart < 0)
+				break;
 			int tagEnd = xml.indexOf('>', tagStart);
-			if (tagEnd < 0) break;
+			if (tagEnd < 0)
+				break;
 
 			String tag = xml.substring(tagStart + 1, tagEnd).trim();
 			pos = tagEnd + 1;
 
 			if (tag.startsWith("object") && !tag.startsWith("/object")) {
 				verts = new ArrayList<>();
-				tris  = new ArrayList<>();
+				tris = new ArrayList<>();
 			} else if (tag.equals("/object")) {
 				if (verts != null && tris != null && !verts.isEmpty()) {
 					double[] va = new double[verts.size()];
-					for (int i = 0; i < verts.size(); i++) va[i] = verts.get(i);
+					for (int i = 0; i < verts.size(); i++)
+						va[i] = verts.get(i);
 					long[] ta = new long[tris.size()];
-					for (int i = 0; i < tris.size(); i++) ta[i] = tris.get(i);
+					for (int i = 0; i < tris.size(); i++)
+						ta[i] = tris.get(i);
 					result.add(new RawMesh(va, ta));
 				}
 				verts = null;
-				tris  = null;
+				tris = null;
 			} else if (verts != null && tag.startsWith("vertex") && !tag.startsWith("vertices")) {
 				verts.add((double) attrFloat(tag, "x"));
 				verts.add((double) attrFloat(tag, "y"));
@@ -1376,25 +1443,23 @@ public class ManifoldBindings {
 		sb.append("  <resources>\n");
 
 		for (int objIdx = 0; objIdx < meshes.size(); objIdx++) {
-			MeshData64   mesh     = meshes.get(objIdx);
-			int        objectId = objIdx + 1;
-			double[]   v        = mesh.vertices();
-			long[]     t        = mesh.triangles();
+			MeshData64 mesh = meshes.get(objIdx);
+			int objectId = objIdx + 1;
+			double[] v = mesh.vertices();
+			long[] t = mesh.triangles();
 
 			sb.append("    <object id=\"").append(objectId).append("\" type=\"model\">\n");
 			sb.append("      <mesh>\n");
 			sb.append("        <vertices>\n");
 			for (int i = 0; i < mesh.vertCount(); i++) {
-				sb.append("          <vertex x=\"").append(v[i * 3])
-				  .append("\" y=\"").append(v[i * 3 + 1])
-				  .append("\" z=\"").append(v[i * 3 + 2]).append("\"/>\n");
+				sb.append("          <vertex x=\"").append(v[i * 3]).append("\" y=\"").append(v[i * 3 + 1])
+						.append("\" z=\"").append(v[i * 3 + 2]).append("\"/>\n");
 			}
 			sb.append("        </vertices>\n");
 			sb.append("        <triangles>\n");
 			for (int i = 0; i < mesh.triCount(); i++) {
-				sb.append("          <triangle v1=\"").append(t[i * 3])
-				  .append("\" v2=\"").append(t[i * 3 + 1])
-				  .append("\" v3=\"").append(t[i * 3 + 2]).append("\"/>\n");
+				sb.append("          <triangle v1=\"").append(t[i * 3]).append("\" v2=\"").append(t[i * 3 + 1])
+						.append("\" v3=\"").append(t[i * 3 + 2]).append("\"/>\n");
 			}
 			sb.append("        </triangles>\n");
 			sb.append("      </mesh>\n");
@@ -1422,21 +1487,18 @@ public class ManifoldBindings {
 
 			putZipEntry(zos, "[Content_Types].xml",
 					("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
-					+ "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">\n"
-					+ "  <Default Extension=\"rels\""
-					+ " ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>\n"
-					+ "  <Default Extension=\"model\""
-					+ " ContentType=\"application/vnd.ms-package.3dmanufacturing-3dmodel+xml\"/>\n"
-					+ "</Types>\n").getBytes(StandardCharsets.UTF_8));
+							+ "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">\n"
+							+ "  <Default Extension=\"rels\""
+							+ " ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>\n"
+							+ "  <Default Extension=\"model\""
+							+ " ContentType=\"application/vnd.ms-package.3dmanufacturing-3dmodel+xml\"/>\n"
+							+ "</Types>\n").getBytes(StandardCharsets.UTF_8));
 
-			putZipEntry(zos, "_rels/.rels",
-					("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
-					+ "<Relationships"
-					+ " xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
-					+ "  <Relationship"
+			putZipEntry(zos, "_rels/.rels", ("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" + "<Relationships"
+					+ " xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n" + "  <Relationship"
 					+ " Type=\"http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel\""
-					+ " Target=\"/3D/3dmodel.model\" Id=\"rel0\"/>\n"
-					+ "</Relationships>\n").getBytes(StandardCharsets.UTF_8));
+					+ " Target=\"/3D/3dmodel.model\" Id=\"rel0\"/>\n" + "</Relationships>\n")
+							.getBytes(StandardCharsets.UTF_8));
 
 			putZipEntry(zos, "3D/3dmodel.model", modelBytes);
 		}
@@ -1471,7 +1533,8 @@ public class ManifoldBindings {
 			int end = valStart;
 			while (end < tag.length()) {
 				char c = tag.charAt(end);
-				if (c == ' ' || c == '/' || c == '>') break;
+				if (c == ' ' || c == '/' || c == '>')
+					break;
 				end++;
 			}
 			return tag.substring(valStart, end);
@@ -1487,5 +1550,6 @@ public class ManifoldBindings {
 	// =========================================================================
 
 	/** Flat double[]/long[] mesh arrays used only during STL/3MF parsing. */
-	private record RawMesh(double[] vertices, long[] triangles) {}
+	private record RawMesh(double[] vertices, long[] triangles) {
+	}
 }
