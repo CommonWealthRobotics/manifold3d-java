@@ -423,6 +423,14 @@ public class ManifoldBindings {
 		// int manifold_get_circular_segments(double radius);
 		load("manifold_get_circular_segments", ValueLayout.JAVA_INT, ValueLayout.JAVA_DOUBLE);
 
+		// ManifoldManifold* manifold_smooth_out(void* mem, ManifoldManifold* m,
+		//	     double minSharpAngle, double minSmoothness);
+		load("manifold_smooth_out", ValueLayout.ADDRESS, ValueLayout.ADDRESS, // void* mem
+				ValueLayout.ADDRESS, // ManifoldManifold* m
+				ValueLayout.JAVA_DOUBLE, // minSharpAngle
+				ValueLayout.JAVA_DOUBLE // minSmoothness
+		);
+
 		System.out.println("Available Manifold functions: " + functions.keySet());
 	}
 
@@ -447,6 +455,27 @@ public class ManifoldBindings {
 			System.err.println("ERROR: Missing Manifold function " + name);
 		}
 	}
+
+	/**
+	 * Smooths the manifold by eliminating edges whose dihedral angle is below
+	 * {@code minSharpAngle} degrees. Edges above that threshold are kept sharp.
+	 *
+	 * {@code minSmoothness} controls how smooth the transition is at preserved
+	 * sharp edges — 0.0 keeps them perfectly sharp, 1.0 blends them fully.
+	 *
+	 * Useful post-difference to dissolve thin sliver faces left by near-coincident
+	 * surfaces. A {@code minSharpAngle} of 30–60 degrees is a reasonable starting
+	 * point; increase it to dissolve more aggressive artifacts.
+	 *
+	 * @param m              the input manifold
+	 * @param minSharpAngle  edges sharper than this (degrees) are preserved
+	 * @param minSmoothness  smoothness at preserved edges [0.0 = sharp, 1.0 = smooth]
+	 */
+	public MemorySegment smoothOut(MemorySegment m, double minSharpAngle, double minSmoothness) throws Throwable {
+		MemorySegment mem = (MemorySegment) functions.get("manifold_alloc_manifold").invoke();
+		return (MemorySegment) functions.get("manifold_smooth_out").invoke(mem, m, minSharpAngle, minSmoothness);
+	}
+
 	// ===== Static Quality Globals =====
 
 	/**
