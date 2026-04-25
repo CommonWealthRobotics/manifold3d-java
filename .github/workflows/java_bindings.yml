@@ -117,7 +117,7 @@ jobs:
       run: |
         apt-get update
         apt-get install -y gcc g++ cmake libgtest-dev libtbb-dev \
-          pkg-config libpython3-dev git curl wget make python3-pip
+          pkg-config libpython3-dev git curl wget make python3-pip libassimp-dev
     - uses: actions/checkout@v4
     - uses: jwlawson/actions-setup-cmake@v2
       with:
