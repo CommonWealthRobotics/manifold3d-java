@@ -98,7 +98,7 @@ jobs:
     timeout-minutes: 45
     runs-on: ubuntu-24.04
     container:
-      image: ubuntu:18.04
+      image: debian:buster
     env:
       CC: gcc
       CXX: g++
@@ -114,7 +114,7 @@ jobs:
         add-apt-repository ppa:ubuntu-toolchain-r/test -y
         apt-get update
         apt-get install -y gcc g++ cmake libgtest-dev libtbb-dev \
-          pkg-config libpython3-dev git curl wget make
+          pkg-config libpython3-dev git curl wget make python3 python3-pip
         python3 -m pip install -U trimesh pytest
     - uses: actions/checkout@v4
     - uses: jwlawson/actions-setup-cmake@v2
