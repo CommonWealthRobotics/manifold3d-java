@@ -100,24 +100,28 @@ jobs:
     container:
       image: ubuntu:18.04
     env:
-      CC: gcc-14
-      CXX: g++-14
+      CC: gcc
+      CXX: g++
+      DEBIAN_FRONTEND: noninteractive
     steps:
     - uses: actions/setup-python@v5
       with:
         python-version: '3.x'
     - name: Install dependencies
       run: |
-        sudo apt-get update
-        sudo apt-get install libgtest-dev libassimp-dev git libtbb-dev pkg-config libpython3-dev lcov
-        python -m pip install -U trimesh pytest
+        apt-get update
+        apt-get install -y software-properties-common
+        add-apt-repository ppa:ubuntu-toolchain-r/test -y
+        apt-get update
+        apt-get install -y gcc g++ cmake libgtest-dev libtbb-dev \
+          pkg-config libpython3-dev git curl wget make
+        python3 -m pip install -U trimesh pytest
     - uses: actions/checkout@v4
     - uses: jwlawson/actions-setup-cmake@v2
       with:
         cmake-version: 4.0.2
     - name: Pull a JavaFX JDK
       run: wget https://cdn.azul.com/zulu/bin/zulu21.46.19-ca-fx-jdk21.0.9-linux_x64.tar.gz
-
     - name: Set Java
       uses: actions/setup-java@v1
       with:
