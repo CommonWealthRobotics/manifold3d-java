@@ -107,17 +107,11 @@ jobs:
     - uses: actions/setup-python@v5
       with:
         python-version: '3.x'
-    - name: Fix Debian Buster EOL repos
-      run: |
-        echo "deb http://archive.debian.org/debian buster main contrib non-free" > /etc/apt/sources.list
-        echo "deb http://archive.debian.org/debian-security buster/updates main contrib non-free" >> /etc/apt/sources.list
-        echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99no-check-valid
-    
     - name: Install dependencies
       run: |
         apt-get update
         apt-get install -y gcc g++ cmake libgtest-dev libtbb-dev \
-          pkg-config libpython3-dev git curl wget make python3-pip libassimp-dev
+          pkg-config libpython3-dev git curl wget make python3-pip
     - uses: actions/checkout@v4
     - uses: jwlawson/actions-setup-cmake@v2
       with:
