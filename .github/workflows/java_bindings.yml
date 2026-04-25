@@ -97,6 +97,8 @@ jobs:
     name: JAVA Linux_x86 Build
     timeout-minutes: 45
     runs-on: ubuntu-24.04
+    container:
+      image: ubuntu:18.04
     env:
       CC: gcc-14
       CXX: g++-14
