@@ -173,7 +173,8 @@ ManifoldManifold* manifold_refine_to_length(void* mem, ManifoldManifold* m,
                                             double length);
 ManifoldManifold* manifold_refine_to_tolerance(void* mem, ManifoldManifold* m,
                                                double tolerance);
-
+ManifoldManifold* manifold_simplify(void* mem, ManifoldManifold* m,
+                                               double tolerance);
 // Manifold Shapes / Constructors
 
 ManifoldManifold* manifold_empty(void* mem);

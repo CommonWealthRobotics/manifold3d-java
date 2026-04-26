@@ -321,6 +321,12 @@ ManifoldManifold* manifold_refine_to_tolerance(void* mem, ManifoldManifold* m,
   return to_c(new (mem) Manifold(refined));
 }
 
+ManifoldManifold* manifold_simplify(void* mem, ManifoldManifold* m,
+                                               double tolerance) {
+  auto refined = from_c(m)->Simplify(tolerance);
+  return to_c(new (mem) Manifold(refined));
+}
+
 ManifoldManifold* manifold_empty(void* mem) {
   return to_c(new (mem) Manifold());
 }
