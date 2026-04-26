@@ -15,7 +15,7 @@ import java.nio.*;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.zip.*;
-
+@SuppressWarnings("preview")
 public class ManifoldBindings {
 	public enum ManifoldError {
 		NO_ERROR, NON_FINITE_VERTEX, NOT_MANIFOLD, VERTEX_INDEX_OUT_OF_BOUNDS, PROPERTIES_WRONG_LENGTH,
@@ -225,16 +225,16 @@ public class ManifoldBindings {
 		// ===== Refinement =====
 
 		// ManifoldManifold* manifold_refine(void* mem, ManifoldManifold* m, int refine);
-		load("manifold_refine", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT);
+		load("manifold_refine", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT);
 
 		// ManifoldManifold* manifold_refine_to_length(void* mem, ManifoldManifold* m, double length);
-		load("manifold_refine_to_length", ValueLayout.ADDRESS,  ValueLayout.ADDRESS,
+		load("manifold_refine_to_length",ValueLayout.ADDRESS,  ValueLayout.ADDRESS,  ValueLayout.ADDRESS,
 				ValueLayout.JAVA_DOUBLE);
 
 		// ManifoldManifold* manifold_refine_to_tolerance(void* mem, ManifoldManifold* m, double tolerance);
-		load("manifold_refine_to_tolerance", ValueLayout.ADDRESS,  ValueLayout.ADDRESS,
+		load("manifold_refine_to_tolerance", ValueLayout.ADDRESS, ValueLayout.ADDRESS,  ValueLayout.ADDRESS,
 				ValueLayout.JAVA_DOUBLE);
-		load("manifold_simplify", ValueLayout.ADDRESS,  ValueLayout.ADDRESS,
+		load("manifold_simplify", ValueLayout.ADDRESS, ValueLayout.ADDRESS,  ValueLayout.ADDRESS,
 				ValueLayout.JAVA_DOUBLE);
 		// ManifoldManifold* manifold_smooth_by_normals(void* mem, ManifoldManifold* m, int normal_idx);
 		load("manifold_smooth_by_normals", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
