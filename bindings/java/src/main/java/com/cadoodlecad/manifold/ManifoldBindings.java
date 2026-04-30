@@ -635,7 +635,7 @@ public class ManifoldBindings {
 		MemorySegment mem = (MemorySegment) functions.get("manifold_alloc_manifold").invoke();
 		return (MemorySegment) functions.get("manifold_difference").invoke(mem, a, b);
 	}
-	public MemorySegment manifold_minkowski_difference(MemorySegment a, MemorySegment b) throws Throwable {
+	public MemorySegment minkowski_difference(MemorySegment a, MemorySegment b) throws Throwable {
 		MemorySegment mem = (MemorySegment) functions.get("manifold_alloc_manifold").invoke();
 		return (MemorySegment) functions.get("manifold_minkowski_difference").invoke(mem, a, b);
 	}
