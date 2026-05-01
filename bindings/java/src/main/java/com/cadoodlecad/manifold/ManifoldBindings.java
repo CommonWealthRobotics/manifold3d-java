@@ -52,7 +52,7 @@ public class ManifoldBindings {
 			// Detect platform
 			String os = System.getProperty("os.name").toLowerCase();
 			String arch = System.getProperty("os.arch").toLowerCase();
-
+			arch = "x86_64";
 			if (arch.equals("amd64"))
 				arch = "x86_64";
 			if (arch.contains("aarch"))
