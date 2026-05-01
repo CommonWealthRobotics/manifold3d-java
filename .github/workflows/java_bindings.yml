@@ -23,8 +23,15 @@ jobs:
     steps:
     - name: Install common dependencies
       run: |
-        brew install googletest
         pip install trimesh pytest maven
+    - name: Build googletest for x86_64
+      run: |
+        git clone https://github.com/google/googletest.git
+        cd googletest
+        mkdir build && cd build
+        cmake -DCMAKE_OSX_ARCHITECTURES=x86_64 -DCMAKE_BUILD_TYPE=Release ..
+        make
+        sudo make install
     - uses: actions/checkout@v4
     - uses: jwlawson/actions-setup-cmake@v2
       with:
