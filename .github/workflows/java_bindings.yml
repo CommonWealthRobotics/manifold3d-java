@@ -19,7 +19,7 @@ jobs:
   build_mac_java_x86:
     name: JAVA Mac x86_64
     timeout-minutes: 30
-    runs-on: macos-13
+    runs-on: macos-14
     steps:
     - name: Install common dependencies
       run: |
@@ -39,7 +39,7 @@ jobs:
       run: |
         mkdir build
         cd build
-        cmake  -DMANIFOLD_CROSS_SECTION=ON -DMANIFOLD_USE_BUILTIN_CLIPPER2=ON -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DMANIFOLD_STRICT=ON -DMANIFOLD_USE_BUILTIN_TBB=ON -DMANIFOLD_DEBUG=ON -DMANIFOLD_ASSERT=ON -DMANIFOLD_PYBIND=OFF -DMANIFOLD_PAR=ON -DCMAKE_OSX_ARCHITECTURES=x86_64 .. && make
+        cmake -DCMAKE_OSX_ARCHITECTURES=x86_64 -DMANIFOLD_CROSS_SECTION=ON -DMANIFOLD_USE_BUILTIN_CLIPPER2=ON -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DMANIFOLD_STRICT=ON -DMANIFOLD_USE_BUILTIN_TBB=ON -DMANIFOLD_DEBUG=ON -DMANIFOLD_ASSERT=ON -DMANIFOLD_PYBIND=OFF -DMANIFOLD_PAR=ON -DCMAKE_OSX_ARCHITECTURES=x86_64 .. && make
         cd ..
         mkdir -p ./bindings/java/src/main/resources/manifold3d/natives/mac-x86_64/
         ls -al ./build/src/
