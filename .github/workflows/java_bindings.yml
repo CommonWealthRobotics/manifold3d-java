@@ -214,9 +214,14 @@ jobs:
       name: JAVA Deploy Jar to Clojars
       runs-on: ubuntu-latest
       if: startsWith(github.ref, 'refs/tags/')
-      needs: [ build_linux_java_x86,build_linux_java_ARM,build_windows_java_x86 ,build_mac_java]
+      needs: [build_mac_java_x86, build_linux_java_x86,build_linux_java_ARM,build_windows_java_x86 ,build_mac_java]
       steps:
       - uses: actions/checkout@v4
+      - name: Download native libraries
+        uses: actions/download-artifact@v4
+        with:
+          name: native-libs-mac-x86_64
+          path: bindings/java/src/main/resources/manifold3d/natives/
       - name: Download native libraries
         uses: actions/download-artifact@v4
         with:
