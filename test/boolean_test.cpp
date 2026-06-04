@@ -12,12 +12,41 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <atomic>
+#include <limits>
+#include <thread>
+
 #include "../src/utils.h"
 #include "manifold/common.h"
 #include "manifold/manifold.h"
 #include "test.h"
 
 using namespace manifold;
+
+#if MANIFOLD_PAR == 1
+namespace {
+// Sense-reversing spin barrier (std::barrier is C++20). Lazy CSG-node
+// realization is one-shot, so all workers must first-touch a shared node
+// together to race deterministically under ThreadSanitizer. Used by the
+// concurrent-shared-node tests below.
+struct SpinBarrier {
+  const int n;
+  std::atomic<int> arrived{0};
+  std::atomic<int> generation{0};
+  explicit SpinBarrier(int n) : n(n) {}
+  void Sync() {
+    const int gen = generation.load(std::memory_order_acquire);
+    if (arrived.fetch_add(1, std::memory_order_acq_rel) + 1 == n) {
+      arrived.store(0, std::memory_order_release);
+      generation.fetch_add(1, std::memory_order_acq_rel);
+    } else {
+      while (generation.load(std::memory_order_acquire) == gen)
+        std::this_thread::yield();
+    }
+  }
+};
+}  // namespace
+#endif
 
 /**
  * The very simplest Boolean operation test.
@@ -72,7 +101,7 @@ TEST(Boolean, Normals) {
 
   RelatedGL(result, {cubeGL, sphereGL}, true, true);
 
-  MeshGL output = result.GetMeshGL(0);
+  MeshGL output = result.GetMeshGL();
 
   if (options.exportModels) WriteTestOBJ("normals.obj", result);
 
@@ -81,7 +110,7 @@ TEST(Boolean, Normals) {
   output.Merge();
   Manifold roundTrip(output);
 
-  RelatedGL(roundTrip, {cubeGL, sphereGL}, true, false);
+  RelatedGL(roundTrip, {cubeGL, sphereGL}, true, true);
 }
 
 TEST(Boolean, MissingNormals) {
@@ -138,6 +167,45 @@ TEST(Boolean, Cubes) {
   EXPECT_NEAR(result.SurfaceArea(), 9.2, 0.01);
 
   if (options.exportModels) WriteTestOBJ("cubes.obj", result);
+}
+
+TEST(Boolean, DeterminismSimpleSubtract) {
+  const Manifold a = Manifold::Cube({1, 1, 1}, true);
+  const Manifold b = Manifold::Cube({1, 1, 1}, true).Translate({0.5, 0, 0});
+  const Manifold out = a - b;
+
+  EXPECT_EQ(out.Status(), Manifold::Error::NoError);
+  EXPECT_FALSE(out.IsEmpty());
+  EXPECT_TRUE(out.MatchesTriNormals());
+  EXPECT_NEAR(out.Volume(), 0.5, 1e-6);
+
+  if (options.exportModels) WriteTestOBJ("det_simple_subtract.obj", out);
+}
+
+TEST(Boolean, DeterminismSimpleUnion) {
+  const Manifold a = Manifold::Cube({1, 1, 1}, true);
+  const Manifold b = Manifold::Cube({1, 1, 1}, true).Translate({0.5, 0, 0});
+  const Manifold out = a + b;
+
+  EXPECT_EQ(out.Status(), Manifold::Error::NoError);
+  EXPECT_FALSE(out.IsEmpty());
+  EXPECT_TRUE(out.MatchesTriNormals());
+  EXPECT_NEAR(out.Volume(), 1.5, 1e-6);
+
+  if (options.exportModels) WriteTestOBJ("det_simple_union.obj", out);
+}
+
+TEST(Boolean, DeterminismSimpleIntersect) {
+  const Manifold a = Manifold::Cube({1, 1, 1}, true);
+  const Manifold b = Manifold::Cube({1, 1, 1}, true).Translate({0.5, 0, 0});
+  const Manifold out = a ^ b;
+
+  EXPECT_EQ(out.Status(), Manifold::Error::NoError);
+  EXPECT_FALSE(out.IsEmpty());
+  EXPECT_TRUE(out.MatchesTriNormals());
+  EXPECT_NEAR(out.Volume(), 0.5, 1e-6);
+
+  if (options.exportModels) WriteTestOBJ("det_simple_intersect.obj", out);
 }
 
 TEST(Boolean, Simplify) {
@@ -372,14 +440,50 @@ TEST(Boolean, Perturb3) {
   const int N = 16;  // Number of rotations for the gear pattern
   const double alpha = 90.0 / N;
 
+  // First decomposition step: a single union operation from the same setup.
+  const Manifold cube = Manifold::Cube({1, 1, 1}, true);
+  const Manifold pairUnion = cube + cube.Rotate(0, 0, alpha);
+  if (options.exportModels) WriteTestOBJ("perturb3_pair_union.obj", pairUnion);
+
   // Create outer gear - many rotated cubes unioned together
   std::vector<Manifold> outerCubes;
-  const Manifold cube = Manifold::Cube({1, 1, 1}, true);
   for (int i = 0; i < N; i++) {
     outerCubes.push_back(cube.Rotate(0, 0, alpha * i));
   }
+
+  // Binary-tree probes for the first 4 shapes.
+  Manifold pair01 = outerCubes[0] + outerCubes[1];
+  Manifold pair23 = outerCubes[2] + outerCubes[3];
+  Manifold gear4BalancedSeq = pair01 + pair23;
+  if (options.exportModels) {
+    WriteTestOBJ("perturb3_pair01.obj", pair01);
+    WriteTestOBJ("perturb3_pair23.obj", pair23);
+    WriteTestOBJ("perturb3_gear4_balanced_seq.obj", gear4BalancedSeq);
+  }
+
+  // small prefixes before the full 16-shape reduction.
+  Manifold gear3Seq = outerCubes[0] + outerCubes[1];
+  gear3Seq = gear3Seq + outerCubes[2];
+  Manifold gear3Batch = Manifold::BatchBoolean(
+      {outerCubes[0], outerCubes[1], outerCubes[2]}, OpType::Add);
+  if (options.exportModels) {
+    WriteTestOBJ("perturb3_gear3_seq.obj", gear3Seq);
+    WriteTestOBJ("perturb3_gear3_batch.obj", gear3Batch);
+  }
+
+  Manifold gear4Seq = gear3Seq + outerCubes[3];
+  Manifold gear4Batch = Manifold::BatchBoolean(
+      {outerCubes[0], outerCubes[1], outerCubes[2], outerCubes[3]},
+      OpType::Add);
+  if (options.exportModels) {
+    WriteTestOBJ("perturb3_gear4_seq.obj", gear4Seq);
+    WriteTestOBJ("perturb3_gear4_batch.obj", gear4Batch);
+  }
+
   Manifold gear = Manifold::BatchBoolean(outerCubes, OpType::Add);
+  if (options.exportModels) WriteTestOBJ("perturb3_gear.obj", gear);
   Manifold outerGear = gear.Scale({2, 2, 1});
+  if (options.exportModels) WriteTestOBJ("perturb3_outerGear.obj", outerGear);
 
   // Subtract inner from outer to create the nasty gear with slivers
   Manifold nastyGear = outerGear - gear;
@@ -396,7 +500,10 @@ TEST(Boolean, Perturb3) {
   EXPECT_NEAR(nastyGear.Volume(), expectedVolume, 1e-5);
   EXPECT_NEAR(nastyGear.SurfaceArea(), expectedArea, 1e-4);
 
-  if (options.exportModels) WriteTestOBJ("nastyGear.obj", nastyGear);
+  if (options.exportModels) {
+    WriteTestOBJ("nastyGear.obj", nastyGear);
+    WriteTestOBJ("perturb3_nastyGear.obj", nastyGear);
+  }
 }
 
 TEST(Boolean, Coplanar) {
@@ -423,6 +530,8 @@ TEST(Boolean, MultiCoplanar) {
   EXPECT_EQ(out.Genus(), -1);
   EXPECT_NEAR(out.Volume(), 0.18, 1e-5);
   EXPECT_NEAR(out.SurfaceArea(), 2.76, 1e-5);
+
+  if (options.exportModels) WriteTestOBJ("det_multi_coplanar.obj", out);
 }
 
 TEST(Boolean, AlmostCoplanar) {
@@ -430,6 +539,7 @@ TEST(Boolean, AlmostCoplanar) {
   Manifold result =
       tet + tet.Rotate(0.001, -0.08472872823860228, 0.055910459615905288) + tet;
   ExpectMeshes(result, {{20, 36}});
+  if (options.exportModels) WriteTestOBJ("det_nearly_coplanar.obj", result);
 }
 
 TEST(Boolean, FaceUnion) {
@@ -673,9 +783,11 @@ TEST(Boolean, NonIntersecting) {
   Manifold cube2 = cube1.Scale(vec3(2)).Translate({3, 0, 0});
   double vol2 = cube2.Volume();
 
-  EXPECT_EQ((cube1 + cube2).Volume(), vol1 + vol2);
+  Manifold unionOut = cube1 + cube2;
+  EXPECT_EQ(unionOut.Volume(), vol1 + vol2);
   EXPECT_EQ((cube1 - cube2).Volume(), vol1);
   EXPECT_TRUE((cube1 ^ cube2).IsEmpty());
+  if (options.exportModels) WriteTestOBJ("det_non_overlap.obj", unionOut);
 }
 
 TEST(Boolean, Precision) {
@@ -717,6 +829,130 @@ TEST(Boolean, SimpleCubeRegression) {
   EXPECT_EQ(result.Status(), Manifold::Error::NoError);
 }
 
+// Regression: Compose() in csg_tree.cpp used to read the global atomic
+// Manifold::Impl::meshIDCounter_ twice — once when shifting `triRef.meshID`
+// values and once when shifting `meshIDtransform` keys. If another thread
+// advanced the counter between the two reads, the offsets disagreed and
+// the resulting Impl had `triRef.meshID` values not present in
+// `meshIDtransform`. After IncrementMeshIDs's HashTable lookup, those
+// orphan meshIDs collapsed to 0, and GetMeshGL64 emitted runs with the
+// default Relation's `originalID = -1` (UINT32_MAX as uint32).
+//
+// MANIFOLD_PAR guard: emscripten/WASM builds without pthreads can't
+// construct std::thread and abort at runtime; the bug also can't manifest
+// without concurrent CSG, so skipping there is fine.
+#if MANIFOLD_PAR == 1
+TEST(Boolean, BatchBooleanComposeMeshIDStable) {
+  // Three pairwise-disjoint cubes — forces the Compose path inside
+  // BatchBoolean(Add).
+  auto build = []() {
+    Manifold a = Manifold::Cube(vec3(1, 1, 1));
+    Manifold b = Manifold::Cube(vec3(1, 1, 1)).Translate({3, 0, 0});
+    Manifold c = Manifold::Cube(vec3(1, 1, 1)).Translate({0, 3, 0});
+    return Manifold::BatchBoolean({a, b, c}, OpType::Add);
+  };
+
+  // Several worker threads each running the same pipeline. The internal
+  // ReserveIDs calls during their CSG ops provide the cross-thread counter
+  // contention the bug needs.
+  std::atomic<int> orphans{0};
+  auto worker = [&]() {
+    for (int i = 0; i < 200; ++i) {
+      MeshGL64 m = build().GetMeshGL64();
+      for (uint32_t orig : m.runOriginalID) {
+        if (orig == std::numeric_limits<uint32_t>::max()) ++orphans;
+      }
+    }
+  };
+
+  std::vector<std::thread> ts;
+  for (int t = 0; t < 8; ++t) ts.emplace_back(worker);
+  for (auto& t : ts) t.join();
+
+  EXPECT_EQ(orphans.load(), 0)
+      << "Compose produced runs with originalID = -1; indicates a "
+         "non-atomic meshIDCounter_ snapshot.";
+}
+
+// Regression: a CSG leaf is realized lazily on first const access -
+// CsgLeafNode::GetImpl rewrites pImpl_/transform_. A Manifold and its copies
+// share the node but not its lock, so two threads realizing one shared node at
+// once tore the meshID mapping and faces came back with originalID = -1.
+TEST(Boolean, ConcurrentSharedNodeOriginalIDStable) {
+  constexpr int kThreads = 8;
+  constexpr int kRounds = 256;
+  // Each view shares original's realized Impl with a pending transform, so its
+  // first touch realizes it - the contended write.
+  const Manifold original = Manifold::Cube(vec3(2)).AsOriginal();
+  const auto origID = static_cast<uint32_t>(original.OriginalID());
+  const size_t expectTri = original.NumTri();
+  std::vector<Manifold> shared;
+  shared.reserve(kRounds);
+  for (int r = 0; r < kRounds; ++r)
+    shared.push_back(original.Translate({0.1 * r, 0, 0}));
+
+  SpinBarrier barrier(kThreads);
+  std::atomic<int> bad{0};
+  auto worker = [&]() {
+    for (int r = 0; r < kRounds; ++r) {
+      barrier.Sync();
+      const MeshGL m = shared[r].GetMeshGL();
+      if (m.NumTri() != expectTri) ++bad;
+      // A transformed view keeps the original's per-face id in runOriginalID.
+      for (uint32_t orig : m.runOriginalID)
+        if (orig != origID) ++bad;  // includes the -1 (UINT32_MAX) collapse
+    }
+  };
+  std::vector<std::thread> ts;
+  for (int t = 0; t < kThreads; ++t) ts.emplace_back(worker);
+  for (auto& t : ts) t.join();
+
+  EXPECT_EQ(bad.load(), 0)
+      << "concurrent realization of a shared CSG leaf corrupted originalID or "
+         "the mesh; also flagged as a data race under ThreadSanitizer.";
+}
+
+// Companion for CsgOpNode's lazy-eval cache_: a shared, unevaluated op node is
+// evaluated by all threads at once via per-thread Manifold copies (which share
+// pNode_ but get their own pNodeMutex_). Without the guarded cache_
+// read/publish the concurrent evaluation tears the result.
+TEST(Boolean, ConcurrentSharedOpNodeOriginalIDStable) {
+  constexpr int kThreads = 8;
+  constexpr int kRounds = 256;
+  const Manifold a = Manifold::Cube(vec3(2)).AsOriginal();
+  // Disjoint union: each result keeps runs from both originals, none collapsed.
+  std::vector<Manifold> shared;
+  shared.reserve(kRounds);
+  for (int r = 0; r < kRounds; ++r)
+    shared.push_back(
+        a + Manifold::Cube(vec3(0.2)).Translate({10.0 + 0.1 * r, 0, 0}));
+  // Probe a throwaway union so the shared nodes stay unevaluated until the
+  // race.
+  const size_t expectTri =
+      (a + Manifold::Cube(vec3(0.2)).Translate({10, 0, 0})).NumTri();
+
+  SpinBarrier barrier(kThreads);
+  std::atomic<int> bad{0};
+  auto worker = [&]() {
+    for (int r = 0; r < kRounds; ++r) {
+      Manifold m = shared[r];  // copy shares the op node, own pNodeMutex_
+      barrier.Sync();
+      const MeshGL mesh = m.GetMeshGL();
+      if (mesh.NumTri() != expectTri) ++bad;
+      for (uint32_t orig : mesh.runOriginalID)
+        if (orig == std::numeric_limits<uint32_t>::max()) ++bad;  // -1 collapse
+    }
+  };
+  std::vector<std::thread> ts;
+  for (int t = 0; t < kThreads; ++t) ts.emplace_back(worker);
+  for (auto& t : ts) t.join();
+
+  EXPECT_EQ(bad.load(), 0)
+      << "concurrent evaluation of a shared CsgOpNode corrupted originalID or "
+         "the mesh; also flagged as a data race under ThreadSanitizer.";
+}
+#endif  // MANIFOLD_PAR == 1
+
 TEST(Boolean, BatchBoolean) {
   Manifold cube = Manifold::Cube({100, 100, 1});
   Manifold cylinder1 = Manifold::Cylinder(1, 30).Translate({-10, 30, 0});
@@ -741,4 +977,29 @@ TEST(Boolean, BatchBoolean) {
   ExpectMeshes(subtract, {{102, 200}});
   EXPECT_FLOAT_EQ(subtract.Volume(), 7226.043);
   EXPECT_FLOAT_EQ(subtract.SurfaceArea(), 14904.597);
+}
+
+// Regression for #1672: a sub-tree shared between two trees must survive when
+// one of those trees is destroyed without being evaluated. Previously the
+// CsgOpNode destructor emptied descendant impls regardless of whether they
+// were still referenced by other live trees, which then manifested as empty
+// positive_children in Add/Intersect finalize and a crash in BatchUnion.
+TEST(Boolean, SharedSubtreeAfterSiblingDestroyed) {
+  Manifold a = Manifold::Cube(vec3(1));
+  Manifold b = Manifold::Cube(vec3(1)).Translate(vec3(0.5, 0, 0));
+  Manifold c = Manifold::Cube(vec3(1)).Translate(vec3(1.0, 0, 0));
+  Manifold shared = a + b;
+  Manifold tree2 = shared - c;
+  {
+    Manifold tree1 = shared + c;
+    // tree1 goes out of scope here, its destructor runs while its impl
+    // still has original children (never evaluated).
+  }
+  // Build the same tree without sharing so we can compare — a partial
+  // corruption that didn't crash would show up as a tri-count mismatch.
+  Manifold reference = (Manifold::Cube(vec3(1)) +
+                        Manifold::Cube(vec3(1)).Translate(vec3(0.5, 0, 0))) -
+                       Manifold::Cube(vec3(1)).Translate(vec3(1.0, 0, 0));
+  EXPECT_EQ(tree2.Status(), Manifold::Error::NoError);
+  EXPECT_EQ(tree2.NumTri(), reference.NumTri());
 }

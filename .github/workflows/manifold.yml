@@ -24,7 +24,7 @@ jobs:
         shared: [OFF, ON]
     runs-on: windows-2025
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - uses: lukka/get-cmake@v4.2.3
       with:
         cmakeVersion: 4.0.2
@@ -83,7 +83,20 @@ jobs:
       run: |
         cp ./build/lib/Release/* ./build/bin/Release
         ./build/bin/Release/manifold_test.exe
-
+    - name: Export determinism meshes
+      if: matrix.parallelization == 'OFF' && matrix.shared == 'OFF'
+      shell: bash
+      env:
+        MANIFOLD_OBJ_HEX_FLOAT: 1
+      run: |
+        cp ./build/lib/Release/* ./build/bin/Release
+        bash ./scripts/export_determinism_meshes.sh build/bin/Release ./manifold_test.exe meshes-windows
+    - name: Upload determinism meshes (Windows)
+      if: matrix.parallelization == 'OFF' && matrix.shared == 'OFF'
+      uses: actions/upload-artifact@v4
+      with:
+        name: meshes-windows
+        path: meshes-windows/
   build:
     name: GCC ${{matrix.gcc}} (CrossSection:${{matrix.cross_section}}, TBB:${{matrix.parallelization}})
     timeout-minutes: 45
@@ -107,7 +120,7 @@ jobs:
       CC: gcc-${{ matrix.gcc }}
       CXX: g++-${{ matrix.gcc }}
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - &setup-python
       uses: actions/setup-python@v5
       with:
@@ -145,10 +158,56 @@ jobs:
         export PYTHONPATH=$PYTHONPATH:$(pwd)/build/bindings/python
         python3 bindings/python/examples/run_all.py -e
         python3 -m pytest
+    - name: Export determinism meshes
+      if: matrix.parallelization == 'OFF' && matrix.gcc == 14 && matrix.os == 'ubuntu-24.04'
+      env:
+        MANIFOLD_OBJ_HEX_FLOAT: 1
+      run: |
+        bash ./scripts/export_determinism_meshes.sh build/test ./manifold_test meshes-linux
+    - name: Upload determinism meshes (Linux)
+      if: matrix.parallelization == 'OFF' && matrix.gcc == 14 && matrix.os == 'ubuntu-24.04'
+      uses: actions/upload-artifact@v4
+      with:
+        name: meshes-linux
+        path: meshes-linux/
     - name: test cmake consumer
       run: |
         sudo cmake --install build
         ./scripts/test-cmake.sh
+
+  build_no_iostream:
+    name: NO_IOSTREAM (clang)
+    timeout-minutes: 20
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+    - name: Install apt packages
+      uses: awalsh128/cache-apt-pkgs-action@v1.6.0
+      with:
+        packages: cmake clang libgtest-dev
+    - name: Configure + build with MANIFOLD_NO_IOSTREAM=ON, MANIFOLD_TEST=ON
+      run: |
+        cmake \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_C_COMPILER=clang \
+          -DCMAKE_CXX_COMPILER=clang++ \
+          -DMANIFOLD_NO_IOSTREAM=ON \
+          -DMANIFOLD_USE_BUILTIN_CLIPPER2=ON \
+          -DMANIFOLD_STRICT=ON \
+          -DMANIFOLD_TEST=ON \
+          -DMANIFOLD_PYBIND=OFF \
+          . -B build
+        cmake --build build
+    - name: Run manifold_test (iostream-using TESTs are gated out)
+      run: ./build/test/manifold_test
+    - name: Verify conflict guard fires (NO_IOSTREAM + DEBUG)
+      run: |
+        if cmake -DMANIFOLD_NO_IOSTREAM=ON -DMANIFOLD_DEBUG=ON \
+                 -DMANIFOLD_USE_BUILTIN_CLIPPER2=ON \
+                 . -B /tmp/conflict-debug 2>&1; then
+          echo "FAIL: configure should have failed for NO_IOSTREAM + DEBUG"
+          exit 1
+        fi
 
   build_gcc_codecov:
     name: code coverage
@@ -162,7 +221,7 @@ jobs:
       CXX: g++-14
     runs-on: ubuntu-24.04
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - name: Install apt packages
       uses: awalsh128/cache-apt-pkgs-action@v1.6.0
       with:
@@ -215,7 +274,7 @@ jobs:
         parallelization: [OFF, ON]
         debug: [OFF, ON]
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - uses: actions/setup-node@v6
       with:
         node-version: 25
@@ -320,7 +379,7 @@ jobs:
         os: [ubuntu-24.04, macos-latest]
     runs-on: ${{matrix.os}}
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - name: Install apt packages
       if: matrix.os == 'ubuntu-24.04'
       uses: awalsh128/cache-apt-pkgs-action@v1.6.0
@@ -352,6 +411,45 @@ jobs:
           . -B build
         ASAN_OPTIONS=detect_container_overflow=0 cmake --build build
 
+  build_sanitizer:
+    name: Sanitizer (ASan+UBSan)
+    timeout-minutes: 30
+    runs-on: ubuntu-24.04
+    steps:
+    - uses: actions/checkout@v6
+    - name: Install apt packages
+      uses: awalsh128/cache-apt-pkgs-action@v1.6.0
+      with:
+        packages: libgtest-dev libtbb-dev clang cmake
+        version: 1
+    - *clone-clipper2
+    - name: Build (clang + asan/ubsan)
+      run: |
+        cmake \
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+          -DBUILD_SHARED_LIBS=ON \
+          -DMANIFOLD_STRICT=ON \
+          -DMANIFOLD_PYBIND=OFF \
+          -DMANIFOLD_DEBUG=ON \
+          -DMANIFOLD_ASSERT=ON \
+          -DMANIFOLD_CROSS_SECTION=ON \
+          -DMANIFOLD_PAR=OFF \
+          -DCMAKE_C_COMPILER=clang \
+          -DCMAKE_CXX_COMPILER=clang++ \
+          -DCMAKE_C_FLAGS="-fsanitize=address,undefined" \
+          -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined" \
+          -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined" \
+          -DCMAKE_SHARED_LINKER_FLAGS="-fsanitize=address,undefined" \
+          -DFETCHCONTENT_SOURCE_DIR_CLIPPER2=clipper2 \
+          . -B build
+        cmake --build build
+    - name: Test (small sanitizer subset)
+      env:
+        ASAN_OPTIONS: detect_container_overflow=0
+        UBSAN_OPTIONS: print_stacktrace=1
+      run: |
+        ./build/test/manifold_test --gtest_filter="Boolean.DeterminismSimpleSubtract:Boolean.DeterminismSimpleUnion:Boolean.DeterminismSimpleIntersect:Boolean.MultiCoplanar:Boolean.NonIntersecting:Manifold.MeshDeterminism"
+
   build_mxe:
     name: MXE (TBB:${{matrix.parallelization == 'ON'}})
     timeout-minutes: 30
@@ -361,7 +459,7 @@ jobs:
     runs-on: ubuntu-latest
     container: openscad/mxe-x86_64-gui:latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - *clone-clipper2
     - name: Build
       run: |
@@ -395,7 +493,7 @@ jobs:
         os: [macos-15-intel, macos-latest]
     runs-on: ${{matrix.os}}
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - uses: actions/setup-python@v5
       with:
         python-version: '3.x'
@@ -425,6 +523,18 @@ jobs:
     - name: Test
       run: |
         build/test/manifold_test
+    - name: Export determinism meshes
+      if: matrix.parallelization == 'OFF' && matrix.shared == 'OFF' && matrix.os == 'macos-latest'
+      env:
+        MANIFOLD_OBJ_HEX_FLOAT: 1
+      run: |
+        bash ./scripts/export_determinism_meshes.sh build/test ./manifold_test meshes-mac
+    - name: Upload determinism meshes (macOS)
+      if: matrix.parallelization == 'OFF' && matrix.shared == 'OFF' && matrix.os == 'macos-latest'
+      uses: actions/upload-artifact@v4
+      with:
+        name: meshes-mac
+        path: meshes-mac/
     - name: test cmake consumer
       run: |
         sudo cmake --install build
@@ -438,7 +548,7 @@ jobs:
     timeout-minutes: 30
     runs-on: macos-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - uses: actions/setup-python@v5
       with:
         python-version: '3.x'
@@ -486,8 +596,32 @@ jobs:
         variant: [manifold-none, manifold-tbb, manifold-js, manifold-js-tbb, manifold3d]
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - uses: DeterminateSystems/nix-installer-action@main
     - uses: DeterminateSystems/magic-nix-cache-action@main
     - run: nix build -L '.?submodules=1#${{matrix.variant}}'
 
+  determinism_check:
+    name: Cross-platform determinism check
+    needs: [build, build_windows, build_mac]
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+    - name: Download Linux meshes
+      uses: actions/download-artifact@v4
+      with:
+        name: meshes-linux
+        path: meshes/linux
+    - name: Download macOS meshes
+      uses: actions/download-artifact@v4
+      with:
+        name: meshes-mac
+        path: meshes/mac
+    - name: Download Windows meshes
+      uses: actions/download-artifact@v4
+      with:
+        name: meshes-windows
+        path: meshes/windows
+    - name: Compare meshes across platforms
+      run: |
+        bash ./scripts/compare_artifact.sh meshes

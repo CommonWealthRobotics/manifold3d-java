@@ -16,6 +16,7 @@
 
 #include <algorithm>
 
+#include "../src/execution_impl.h"
 #ifdef MANIFOLD_CROSS_SECTION
 #include "manifold/cross_section.h"
 #endif
@@ -32,6 +33,42 @@ int NumUnique(const std::vector<T>& in) {
     unique.emplace(v);
   }
   return unique.size();
+}
+
+// A disjoint Union of a CubeSTL (no hasNormals) and a Sphere with
+// CalculateNormals. The result has mixed meshIDs - some with hasNormals,
+// some without - the exact shape the per-meshID handling in
+// Impl::Transform / Compose / CreateProperties was added to support.
+Manifold MixedNormalsCubePlusSphere(double sphereRadius = 5.0) {
+  MeshGL cubeGL = CubeSTL();
+  cubeGL.Merge();
+  return Manifold(cubeGL).Translate({20, 0, 0}) +
+         Manifold::Sphere(sphereRadius, 32).CalculateNormals(0);
+}
+
+// Count verts on the sphere surface (|pos| ~ sphereRadius) whose stored
+// normal at slot 3..5+offset aligns with `expected(pos)` (dot > 0.9).
+// Returns (good, bad).
+template <typename ExpectedFn>
+std::pair<int, int> CountSphereNormalAlignment(const MeshGL& gl,
+                                               double sphereRadius,
+                                               int normalSlotOffset,
+                                               ExpectedFn expected) {
+  int good = 0, bad = 0;
+  for (size_t v = 0; v < gl.NumVert(); ++v) {
+    const vec3 pos(gl.vertProperties[v * gl.numProp + 0],
+                   gl.vertProperties[v * gl.numProp + 1],
+                   gl.vertProperties[v * gl.numProp + 2]);
+    if (std::abs(la::length(pos) - sphereRadius) > 0.1) continue;
+    const vec3 n(gl.vertProperties[v * gl.numProp + normalSlotOffset + 0],
+                 gl.vertProperties[v * gl.numProp + normalSlotOffset + 1],
+                 gl.vertProperties[v * gl.numProp + normalSlotOffset + 2]);
+    if (la::dot(n, expected(pos)) > 0.9)
+      ++good;
+    else
+      ++bad;
+  }
+  return {good, bad};
 }
 
 }  // namespace
@@ -171,6 +208,421 @@ TEST(Manifold, InvalidInput7) {
   EXPECT_EQ(tet.Status(), Manifold::Error::RunIndexWrongLength);
 }
 
+TEST(Manifold, ErrorPropagationDecompose) {
+  MeshGL in = TetGL();
+  in.vertProperties[2 * 3 + 1] = NAN;
+  Manifold errored(in);
+  ASSERT_EQ(errored.Status(), Manifold::Error::NonFiniteVertex);
+  auto parts = errored.Decompose();
+  ASSERT_EQ(parts.size(), 1);
+  EXPECT_EQ(parts[0].Status(), Manifold::Error::NonFiniteVertex);
+}
+
+TEST(Manifold, ErrorPropagationHull) {
+  MeshGL in = TetGL();
+  in.vertProperties[2 * 3 + 1] = NAN;
+  Manifold errored(in);
+  ASSERT_EQ(errored.Status(), Manifold::Error::NonFiniteVertex);
+  EXPECT_EQ(errored.Hull().Status(), Manifold::Error::NonFiniteVertex);
+}
+
+TEST(Manifold, ErrorPropagationHullMulti) {
+  MeshGL in = TetGL();
+  in.vertProperties[2 * 3 + 1] = NAN;
+  Manifold errored(in);
+  ASSERT_EQ(errored.Status(), Manifold::Error::NonFiniteVertex);
+  Manifold good = Manifold::Cube();
+  EXPECT_EQ(Manifold::Hull({good, errored}).Status(),
+            Manifold::Error::NonFiniteVertex);
+}
+
+TEST(Manifold, ErrorPropagationSetProperties) {
+  MeshGL in = TetGL();
+  in.vertProperties[2 * 3 + 1] = NAN;
+  Manifold errored(in);
+  ASSERT_EQ(errored.Status(), Manifold::Error::NonFiniteVertex);
+  EXPECT_EQ(errored.SetProperties(1, nullptr).Status(),
+            Manifold::Error::NonFiniteVertex);
+}
+
+TEST(Manifold, ErrorPropagationCalculateCurvature) {
+  MeshGL in = TetGL();
+  in.vertProperties[2 * 3 + 1] = NAN;
+  Manifold errored(in);
+  ASSERT_EQ(errored.Status(), Manifold::Error::NonFiniteVertex);
+  EXPECT_EQ(errored.CalculateCurvature(0, 1).Status(),
+            Manifold::Error::NonFiniteVertex);
+}
+
+TEST(Manifold, ErrorPropagationCalculateNormals) {
+  MeshGL in = TetGL();
+  in.vertProperties[2 * 3 + 1] = NAN;
+  Manifold errored(in);
+  ASSERT_EQ(errored.Status(), Manifold::Error::NonFiniteVertex);
+  EXPECT_EQ(errored.CalculateNormals(0).Status(),
+            Manifold::Error::NonFiniteVertex);
+}
+
+// CalculateNormals(idx) followed by GetMeshGL() (no idx) used to drop
+// the transform-on-export step, returning input-frame data.
+TEST(Manifold, NormalsCavity) {
+  // The #1712 repro: inner-sphere normals from a Boolean diff should point
+  // toward the origin (outward from the surrounding solid).
+  MeshGL mesh = (Manifold::Sphere(10.0, 32) - Manifold::Sphere(3.0, 32))
+                    .CalculateNormals(0)
+                    .GetMeshGL();
+  ASSERT_GE(mesh.numProp, 6);
+  auto [good, bad] = CountSphereNormalAlignment(
+      mesh, 3.0, 3, [](vec3 pos) { return la::normalize(-pos); });
+  EXPECT_GT(good, 0);
+  EXPECT_EQ(bad, 0);
+}
+
+TEST(Manifold, NormalsRotateBeforeCalc) {
+  // Rotation before CalculateNormals: SetNormals computes from already-
+  // rotated faceNormal_ and stores world-frame at slot 0.
+  MeshGL mesh = Manifold::Sphere(10.0, 32)
+                    .Rotate(45, 0, 0)
+                    .CalculateNormals(0)
+                    .GetMeshGL();
+  auto [_, bad] = CountSphereNormalAlignment(
+      mesh, 10.0, 3, [](vec3 pos) { return la::normalize(pos); });
+  EXPECT_EQ(bad, 0);
+}
+
+TEST(Manifold, NormalsRotateAfterCalc) {
+  // Rotation *after* CalculateNormals: Impl::Transform eager-transforms the
+  // stored slot 0..2 so it tracks the new orientation.
+  MeshGL mesh = Manifold::Sphere(10.0, 32)
+                    .CalculateNormals(0)
+                    .Rotate(45, 0, 0)
+                    .GetMeshGL();
+  auto [_, bad] = CountSphereNormalAlignment(
+      mesh, 10.0, 3, [](vec3 pos) { return la::normalize(pos); });
+  EXPECT_EQ(bad, 0);
+}
+
+TEST(Manifold, NormalsAutoSubstitute) {
+  // No-arg invocation: defaults to slot 0 and sets the per-run hasNormals
+  // bit on every output run.
+  MeshGL mesh = Manifold::Sphere(10.0, 32).CalculateNormals().GetMeshGL();
+  ASSERT_GE(mesh.numProp, 6);
+  ASSERT_GT(mesh.NumRun(), 0u);
+  EXPECT_TRUE(mesh.HasNormals(0));
+}
+
+TEST(Manifold, NormalsRoundTrip) {
+  // getMesh -> ofMesh -> getMesh preserves the per-run flag, so the second
+  // getMesh still emits world-frame normals.
+  Manifold round = (Manifold::Sphere(10.0, 32) - Manifold::Sphere(3.0, 32))
+                       .CalculateNormals();
+  MeshGL out1 = round.GetMeshGL();
+  EXPECT_TRUE(out1.HasNormals(0));
+  MeshGL out2 = Manifold(out1).GetMeshGL();
+  EXPECT_TRUE(out2.HasNormals(0));
+  auto [good, bad] = CountSphereNormalAlignment(
+      out2, 3.0, 3, [](vec3 pos) { return la::normalize(-pos); });
+  EXPECT_GT(good, 0);
+  EXPECT_EQ(bad, 0);
+}
+
+TEST(Manifold, NormalsRefinePreserved) {
+  // Refine keeps the recording: linearly-interpolated normals at the new
+  // verts are less precise than recomputed ones but still meaningful.
+  MeshGL mesh =
+      Manifold::Sphere(10.0, 32).CalculateNormals().Refine(2).GetMeshGL();
+  ASSERT_GT(mesh.NumRun(), 0u);
+  EXPECT_TRUE(mesh.HasNormals(0));
+}
+
+TEST(Manifold, NormalsSmoothByNormalsNoArg) {
+  // Smoke test that the no-arg SmoothByNormals reads from the recorded
+  // slot 0 and produces a valid manifold.
+  Manifold smoothed =
+      Manifold::Sphere(10.0, 32).CalculateNormals().SmoothByNormals();
+  EXPECT_EQ(smoothed.Status(), Manifold::Error::NoError);
+}
+
+TEST(Manifold, NormalsNonStandardSlotNotRecorded) {
+  // CalculateNormals(non-zero) does NOT set the per-run recording, since a
+  // non-standard slot can't be safely auto-substituted on GetMeshGL(-1).
+  MeshGL mesh = Manifold::Sphere(10.0, 32).CalculateNormals(3).GetMeshGL();
+  ASSERT_GT(mesh.NumRun(), 0u);
+  EXPECT_FALSE(mesh.HasNormals(0));
+}
+
+TEST(Manifold, NormalsSharedPropVertMixedFlagsUndefined) {
+  // hasNormals is per-run, but a single propVert holds one slot 0..2
+  // value. If a hand-built MeshGL shares a propVert between a
+  // hasNormals=true run and a hasNormals=false run, a Transform rotates
+  // the slot on behalf of the hasNormals=true camp; the other camp's
+  // interpretation (e.g. color) is collateral damage. Standard
+  // CalculateNormals / Boolean / Compose outputs never share propVerts
+  // this way - this test pins the documented behaviour for the only
+  // input shape that can produce it.
+  MeshGL gl;
+  gl.numProp = 6;
+  const float pts[4][3] = {{0, 0, 0}, {1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
+  for (int v = 0; v < 4; ++v) {
+    for (int j : {0, 1, 2}) gl.vertProperties.push_back(pts[v][j]);
+    // Slot 0..2: +Z. Run 0 treats as normal, Run 1 treats as color.
+    gl.vertProperties.push_back(0);
+    gl.vertProperties.push_back(0);
+    gl.vertProperties.push_back(1);
+  }
+  gl.triVerts = {0, 1, 3, 0, 2, 1, 0, 3, 2, 1, 2, 3};
+  gl.runOriginalID = {Manifold::ReserveIDs(1), Manifold::ReserveIDs(1)};
+  gl.runIndex = {0, 6, 12};
+  gl.runFlags = {0x02, 0x00};  // run 0 hasNormals, run 1 plain color
+
+  Manifold m(gl);
+  ASSERT_EQ(m.Status(), Manifold::Error::NoError);
+
+  MeshGL out = m.Rotate(90, 0, 0).GetMeshGL();
+
+  int run0Bad = 0;  // hasNormals camp: slot rotates as expected.
+  int run1Bad = 0;  // no-normals camp: collateral, slot is now rotated.
+  for (size_t run = 0; run < out.NumRun(); ++run) {
+    const bool isNormalsRun = out.HasNormals(run);
+    for (uint32_t i = out.runIndex[run]; i < out.runIndex[run + 1]; ++i) {
+      const uint32_t v = out.triVerts[i];
+      const vec3 val(out.vertProperties[v * out.numProp + 3],
+                     out.vertProperties[v * out.numProp + 4],
+                     out.vertProperties[v * out.numProp + 5]);
+      if (isNormalsRun) {
+        const vec3 expected(0, -1, 0);
+        if (la::length(val - expected) > 0.01) ++run0Bad;
+      } else {
+        const vec3 expected(0, 0, 1);
+        if (la::length(val - expected) > 0.01) ++run1Bad;
+      }
+    }
+  }
+  EXPECT_EQ(run0Bad, 0);
+  EXPECT_GT(run1Bad, 0);
+}
+
+TEST(Manifold, GetNormalLegacyContract) {
+  // Pre-#1718, slot N normals were stored in per-mesh frame and runTransform
+  // had to be applied on read - there was no runFlags bit 1 to mark
+  // world-frame storage. GetNormal must still honour that contract when
+  // reading a MeshGL without the bit set, or SmoothByNormals on legacy data
+  // produces wrong tangents.
+  //
+  // Build twins: take a CalculateNormals'd rotated cube, emit both as a
+  // modern MeshGL (world-frame + bit 1 set) and as a legacy MeshGL (the same
+  // normals inverse-rotated into per-mesh frame, bit 1 cleared). Both should
+  // produce the same SmoothByNormals.Refine output if GetNormal recomposes
+  // correctly.
+  const Manifold rotated =
+      Manifold::Cube({1, 1, 1}, true).Rotate(30, 45, 0).CalculateNormals(0);
+  MeshGL gl_modern = rotated.GetMeshGL();
+  ASSERT_GT(gl_modern.NumRun(), 0u);
+  ASSERT_TRUE(gl_modern.HasNormals(0));
+
+  MeshGL gl_legacy = gl_modern;
+  std::vector<bool> visited(gl_legacy.NumVert(), false);
+  for (size_t run = 0; run < gl_legacy.NumRun(); ++run) {
+    // Invert the per-run normal transform that the legacy GetNormal will
+    // apply on read, so the stored values look "per-mesh frame" again.
+    const mat3 fwd =
+        la::inverse(la::transpose(mat3(gl_legacy.GetRunTransform(run)))) *
+        (gl_legacy.Backside(run) ? -1.0 : 1.0);
+    const mat3 inv = la::inverse(fwd);
+    // `data() + i` rather than `&v[i]`: the latter is UB when `i == size()`
+    // (one-past-the-end of the final run) and traps under libc++ fast
+    // hardening - see #1735.
+    for (uint32_t* itr = gl_legacy.triVerts.data() + gl_legacy.runIndex[run];
+         itr < gl_legacy.triVerts.data() + gl_legacy.runIndex[run + 1]; ++itr) {
+      const uint32_t v = *itr;
+      if (visited[v]) continue;
+      visited[v] = true;
+      vec3 n(gl_legacy.vertProperties[v * gl_legacy.numProp + 3],
+             gl_legacy.vertProperties[v * gl_legacy.numProp + 4],
+             gl_legacy.vertProperties[v * gl_legacy.numProp + 5]);
+      n = inv * n;
+      gl_legacy.vertProperties[v * gl_legacy.numProp + 3] = n.x;
+      gl_legacy.vertProperties[v * gl_legacy.numProp + 4] = n.y;
+      gl_legacy.vertProperties[v * gl_legacy.numProp + 5] = n.z;
+    }
+    gl_legacy.runFlags[run] &= ~uint8_t(2);
+  }
+  ASSERT_FALSE(gl_legacy.HasNormals(0));
+
+  Manifold m_modern(gl_modern);
+  Manifold m_legacy(gl_legacy);
+
+  Manifold sm_modern = m_modern.SmoothByNormals(0).Refine(4);
+  Manifold sm_legacy = m_legacy.SmoothByNormals(0).Refine(4);
+  EXPECT_NEAR(sm_modern.Volume(), sm_legacy.Volume(), 1e-4);
+  EXPECT_NEAR(sm_modern.SurfaceArea(), sm_legacy.SurfaceArea(), 1e-4);
+}
+
+TEST(Manifold, TransformMixedNormalsPerMeshID) {
+  // Mixed Boolean output (no-normals + with-normals): the result's
+  // AllHaveNormals() is false (AND across meshIDs), but the with-normals
+  // meshIDs still hold world-frame normals at slot 0..2 that must rotate
+  // with a subsequent Transform. Impl::Transform must per-meshID iterate,
+  // not skip on the whole-impl flag.
+  MeshGL gl = MixedNormalsCubePlusSphere().Rotate(90, 0, 0).GetMeshGL();
+  auto [good, bad] = CountSphereNormalAlignment(
+      gl, 5.0, 3, [](vec3 pos) { return la::normalize(pos); });
+  EXPECT_GT(good, 0);
+  EXPECT_EQ(bad, 0);
+}
+
+TEST(Manifold, ComposeMixedNormalsPerMeshID) {
+  // Compose's per-node eager-transform check is per-Relation, not whole-node.
+  // Pass a mixed Manifold with a pending Rotate into a 3-input BatchBoolean,
+  // forcing the disjoint Compose path where node->transform_ is non-identity
+  // and node->pImpl_->AllHaveNormals() is false (mixed). Sphere's normals
+  // within the mixed input must still rotate.
+  const Manifold mixed_rot = MixedNormalsCubePlusSphere().Rotate(90, 0, 0);
+  const Manifold t1 = Manifold::Tetrahedron().Translate({-50, 0, 0});
+  const Manifold t2 = Manifold::Tetrahedron().Translate({-100, 0, 0});
+  MeshGL gl =
+      Manifold::BatchBoolean({mixed_rot, t1, t2}, OpType::Add).GetMeshGL();
+  auto [good, bad] = CountSphereNormalAlignment(
+      gl, 5.0, 3, [](vec3 pos) { return la::normalize(pos); });
+  EXPECT_GT(good, 0);
+  EXPECT_EQ(bad, 0);
+}
+
+TEST(Manifold, BooleanSubtractMixedQPerMeshIDNegation) {
+  // CreateProperties' cavity sign-flip must be per-source-meshID. Subtract a
+  // mixed Q (some meshIDs with hasNormals, some without). Cavity verts from
+  // the hasNormals meshIDs need their slot 0..2 flipped to point outward
+  // from the result solid (into the cavity = toward sphere center).
+  const Manifold A = Manifold::Cube({100, 100, 100}, true);
+  MeshGL gl = (A - MixedNormalsCubePlusSphere()).GetMeshGL();
+  auto [good, bad] = CountSphereNormalAlignment(
+      gl, 5.0, 3, [](vec3 pos) { return la::normalize(-pos); });
+  EXPECT_GT(good, 0);
+  EXPECT_EQ(bad, 0);
+}
+
+TEST(Manifold, CalculateNormalsNonZeroIdxSurvivesTransform) {
+  // Non-zero normalIdx is the legacy deferred-transform path: SetNormals
+  // stores slot N in per-mesh frame, and GetMeshGL(N)'s legacy export
+  // applies the per-run runTransform to recover world-frame. This must
+  // survive transforms applied between CalculateNormals and GetMeshGL.
+  const int idx = 3;
+  MeshGL gl = Manifold::Sphere(5.0, 32)
+                  .Rotate(30)
+                  .CalculateNormals(idx)
+                  .Rotate(60)
+                  .GetMeshGL(idx);
+  ASSERT_GE(gl.numProp, 3 + idx + 3);
+  auto [good, bad] = CountSphereNormalAlignment(
+      gl, 5.0, 3 + idx, [](vec3 pos) { return la::normalize(pos); });
+  EXPECT_GT(good, 0);
+  EXPECT_EQ(bad, 0);
+}
+
+TEST(Manifold, ErrorPropagationSmoothByNormals) {
+  MeshGL in = TetGL();
+  in.vertProperties[2 * 3 + 1] = NAN;
+  Manifold errored(in);
+  ASSERT_EQ(errored.Status(), Manifold::Error::NonFiniteVertex);
+  EXPECT_EQ(errored.SmoothByNormals(0).Status(),
+            Manifold::Error::NonFiniteVertex);
+}
+
+TEST(Manifold, ErrorPropagationSmoothOut) {
+  MeshGL in = TetGL();
+  in.vertProperties[2 * 3 + 1] = NAN;
+  Manifold errored(in);
+  ASSERT_EQ(errored.Status(), Manifold::Error::NonFiniteVertex);
+  EXPECT_EQ(errored.SmoothOut().Status(), Manifold::Error::NonFiniteVertex);
+}
+
+TEST(Manifold, ErrorPropagationRefine) {
+  MeshGL in = TetGL();
+  in.vertProperties[2 * 3 + 1] = NAN;
+  Manifold errored(in);
+  ASSERT_EQ(errored.Status(), Manifold::Error::NonFiniteVertex);
+  EXPECT_EQ(errored.Refine(2).Status(), Manifold::Error::NonFiniteVertex);
+  EXPECT_EQ(errored.RefineToLength(0.1).Status(),
+            Manifold::Error::NonFiniteVertex);
+  EXPECT_EQ(errored.RefineToTolerance(0.1).Status(),
+            Manifold::Error::NonFiniteVertex);
+}
+
+TEST(Manifold, ErrorPropagationSetTolerance) {
+  MeshGL in = TetGL();
+  in.vertProperties[2 * 3 + 1] = NAN;
+  Manifold errored(in);
+  ASSERT_EQ(errored.Status(), Manifold::Error::NonFiniteVertex);
+  EXPECT_EQ(errored.SetTolerance(0.1).Status(),
+            Manifold::Error::NonFiniteVertex);
+}
+
+TEST(Manifold, ErrorPropagationAsOriginal) {
+  MeshGL in = TetGL();
+  in.vertProperties[2 * 3 + 1] = NAN;
+  Manifold errored(in);
+  ASSERT_EQ(errored.Status(), Manifold::Error::NonFiniteVertex);
+  EXPECT_EQ(errored.AsOriginal().Status(), Manifold::Error::NonFiniteVertex);
+}
+
+TEST(Manifold, ErrorPropagationWarp) {
+  MeshGL in = TetGL();
+  in.vertProperties[2 * 3 + 1] = NAN;
+  Manifold errored(in);
+  ASSERT_EQ(errored.Status(), Manifold::Error::NonFiniteVertex);
+  EXPECT_EQ(errored.Warp([](vec3& v) {}).Status(),
+            Manifold::Error::NonFiniteVertex);
+  EXPECT_EQ(errored.WarpBatch([](VecView<vec3>) {}).Status(),
+            Manifold::Error::NonFiniteVertex);
+}
+
+TEST(Manifold, ErrorPropagationMinkowski) {
+  MeshGL in = TetGL();
+  in.vertProperties[2 * 3 + 1] = NAN;
+  Manifold errored(in);
+  ASSERT_EQ(errored.Status(), Manifold::Error::NonFiniteVertex);
+  Manifold good = Manifold::Cube();
+  EXPECT_EQ(errored.MinkowskiSum(good).Status(),
+            Manifold::Error::NonFiniteVertex);
+  EXPECT_EQ(good.MinkowskiSum(errored).Status(),
+            Manifold::Error::NonFiniteVertex);
+  EXPECT_EQ(errored.MinkowskiDifference(good).Status(),
+            Manifold::Error::NonFiniteVertex);
+  EXPECT_EQ(good.MinkowskiDifference(errored).Status(),
+            Manifold::Error::NonFiniteVertex);
+}
+
+TEST(Manifold, ErrorPropagationSplitByPlane) {
+  MeshGL in = TetGL();
+  in.vertProperties[2 * 3 + 1] = NAN;
+  Manifold errored(in);
+  ASSERT_EQ(errored.Status(), Manifold::Error::NonFiniteVertex);
+  auto parts = errored.SplitByPlane(vec3(0, 0, 1), 0);
+  EXPECT_EQ(parts.first.Status(), Manifold::Error::NonFiniteVertex);
+  EXPECT_EQ(parts.second.Status(), Manifold::Error::NonFiniteVertex);
+}
+
+TEST(Manifold, ErrorPropagationMirror) {
+  MeshGL in = TetGL();
+  in.vertProperties[2 * 3 + 1] = NAN;
+  Manifold errored(in);
+  ASSERT_EQ(errored.Status(), Manifold::Error::NonFiniteVertex);
+  EXPECT_EQ(errored.Mirror(vec3(1, 0, 0)).Status(),
+            Manifold::Error::NonFiniteVertex);
+  // Degenerate normal (zero vector) on errored input should still propagate.
+  EXPECT_EQ(errored.Mirror(vec3(0, 0, 0)).Status(),
+            Manifold::Error::NonFiniteVertex);
+}
+
+TEST(Manifold, ErrorPropagationSimplify) {
+  MeshGL in = TetGL();
+  in.vertProperties[2 * 3 + 1] = NAN;
+  Manifold errored(in);
+  ASSERT_EQ(errored.Status(), Manifold::Error::NonFiniteVertex);
+  EXPECT_EQ(errored.Simplify().Status(), Manifold::Error::NonFiniteVertex);
+}
+
+#ifndef MANIFOLD_NO_IOSTREAM
 TEST(Manifold, ObjRoundTrip) {
   Manifold m = Manifold::Cube();
   std::stringstream ss;
@@ -180,6 +632,7 @@ TEST(Manifold, ObjRoundTrip) {
   EXPECT_EQ(m2.Status(), Manifold::Error::NoError);
   EXPECT_EQ(m2.Volume(), 1);
 }
+#endif
 
 TEST(Manifold, OppositeFace) {
   MeshGL gl;
@@ -192,7 +645,6 @@ TEST(Manifold, OppositeFace) {
       1, 0, 1,  //
       0, 1, 1,  //
       1, 1, 1,  //
-      //
       2, 0, 0,  //
       2, 1, 0,  //
       2, 0, 1,  //
@@ -662,7 +1114,7 @@ TEST(Manifold, MeshRelationRefinePrecision) {
   Manifold csaszar = Manifold::Smooth(inGL);
 
   csaszar = csaszar.RefineToTolerance(0.05);
-  ExpectMeshes(csaszar, {{2684, 5368, 3}});
+  ExpectMeshes(csaszar, {{2343, 4686, 3}});
   std::vector<uint32_t> runOriginalID = csaszar.GetMeshGL().runOriginalID;
   EXPECT_EQ(runOriginalID.size(), 1);
   EXPECT_EQ(runOriginalID[0], id);
@@ -1154,3 +1606,23 @@ TEST(Manifold, OpenscadCrash) {
   EXPECT_EQ(m2.IsEmpty(), false);
 }
 #endif
+
+// Deeply-nested CsgOpNode chain (e.g. repeated `+=` in a loop) must not
+// stack-overflow in the leaf-counting pre-pass. Cancel up front so we only
+// exercise NumLeaves, not the full boolean evaluation.
+//
+// 300k depth SIGSEGVs on the recursive NumLeaves (8MB default stack on
+// macOS/Linux); runs in ~1s / ~1.2GB peak RSS on the iterative version.
+TEST(Manifold, DeepChainDoesNotOverflowNumLeaves) {
+  constexpr int kDepth = 300000;
+  Manifold m = Manifold::Cube(vec3(1), true);
+  for (int i = 0; i < kDepth; ++i) {
+    m = m + Manifold::Cube(vec3(1), true).Translate(vec3(i * 2.0, 0, 0));
+  }
+  ExecutionContext ctx;
+  ctx.Cancel();
+  EXPECT_EQ(m.WithContext(ctx).Status(), Manifold::Error::Cancelled);
+  // kDepth + 1 leaves in the chain → kDepth booleans to reduce.
+  auto& privateCtx = *ctx.impl_;
+  EXPECT_EQ(privateCtx.totalBooleans.load(), kDepth);
+}

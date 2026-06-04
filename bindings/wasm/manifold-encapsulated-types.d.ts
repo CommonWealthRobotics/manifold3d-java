@@ -16,7 +16,9 @@
  * @primaryExport
  */
 
-import {Box, ErrorStatus, FillRule, JoinType, Mat3, Mat4, Polygons, Rect, SealedFloat32Array, SealedUint32Array, SimplePolygon, Smoothness, Vec2, Vec3} from './manifold-global-types';
+import {Box, ErrorStatus, ExecutionContext, FillRule, JoinType, Mat3, Mat4, Polygons, RayHit, Rect, SealedFloat32Array, SealedUint32Array, SimplePolygon, Smoothness, Vec2, Vec3} from './manifold-global-types';
+
+export {ExecutionContext} from './manifold-global-types';
 
 /**
  * Triangulates a set of /epsilon-valid polygons.
@@ -724,6 +726,12 @@ export class Manifold {
   warp(warpFunc: (vert: Vec3) => void): Manifold;
 
   /**
+   * Batch version of warp(). The callback receives a flat array of xyzxyz...
+   * (length = count * 3) and may modify it in-place.
+   */
+  warpBatch(warpFunc: (verts: Float64Array, count: number) => void): Manifold;
+
+  /**
    * Smooths out the Manifold by filling in the halfedgeTangent vectors. The
    * geometry will remain unchanged until Refine or RefineToLength is called to
    * interpolate the surface. This version uses the supplied vertex normal
@@ -731,10 +739,12 @@ export class Manifold {
    *
    * @param normalIdx The first property channel of the normals. NumProp must be
    * at least normalIdx + 3. Any vertex where multiple normals exist and don't
-   * agree will result in a sharp edge.
+   * agree will result in a sharp edge. Default is 0, the standard slot.
+   * Non-zero values are retained for compatibility and will not be supported
+   * in a future release.
    * @group Smoothing
    */
-  smoothByNormals(normalIdx: number): Manifold;
+  smoothByNormals(normalIdx?: number): Manifold;
 
   /**
    * Smooths out the Manifold by filling in the halfedgeTangent vectors. The
@@ -742,7 +752,7 @@ export class Manifold {
    * interpolate the surface. This version uses the geometry of the triangles
    * and pseudo-normals to define the tangent vectors.
    *
-   * @param minSharpAngle degrees, default 60. Any edges with angles greater
+   * @param minSharpAngle degrees, default 52.5. Any edges with angles greater
    * than this value will remain sharp. The rest will be smoothed to G1
    * continuity, with the caveat that flat faces of three or more triangles will
    * always remain flat. With a value of zero, the model is faceted, but in this
@@ -838,10 +848,13 @@ export class Manifold {
    * Fills in vertex properties for normal vectors, calculated from the mesh
    * geometry. Flat faces composed of three or more triangles will remain flat.
    *
-   * @param normalIdx The property channel in which to store the X
-   * values of the normals. The X, Y, and Z channels will be sequential. The
-   * property set will be automatically expanded to include up through normalIdx
-   * + 2.
+   * @param normalIdx The property channel in which to store the X values of the
+   * normals. The X, Y, and Z channels will be sequential. The property set will
+   * be automatically expanded to include up through normalIdx + 2. Default is
+   * 0, the standard slot; in that case the Manifold records the recording so
+   * a subsequent getMesh() without an explicit normalIdx returns solid-frame
+   * normals. Non-zero values are retained for compatibility and will not be
+   * supported in a future release.
    *
    * @param minSharpAngle Any edges with angles greater than this value will
    * remain sharp, getting different normal vector properties on each side of
@@ -851,7 +864,7 @@ export class Manifold {
    * all.
    * @group Properties
    */
-  calculateNormals(normalIdx: number, minSharpAngle?: number): Manifold;
+  calculateNormals(normalIdx?: number, minSharpAngle?: number): Manifold;
 
   // Boolean Operations
 
@@ -1139,6 +1152,17 @@ export class Manifold {
   minGap(other: Manifold, searchLength: number): number;
 
   /**
+   * Cast a ray segment, returning all hits sorted by distance.
+   *
+   * @param origin The start point of the ray segment.
+   * @param endpoint The end point of the ray segment.
+   * @returns Array of RayHit sorted by distance, empty on miss.
+   *
+   * @group Spatial Queries
+   */
+  rayCast(origin: Vec3, endpoint: Vec3): RayHit[];
+
+  /**
    * Returns the reason for an input Mesh producing an empty Manifold. This
    * Status will carry on through operations like NaN propogation, ensuring an
    * errored mesh doesn't get mysteriously lost. Empty meshes may still show
@@ -1147,6 +1171,19 @@ export class Manifold {
    * @group Information
    */
   status(): ErrorStatus;
+
+  /**
+   * Returns a copy of this Manifold with the given ExecutionContext attached.
+   * The attachment is consumed by the next eager op invoked on the result:
+   * status() for a deferred CSG tree, refine() / refineToLength() /
+   * refineToTolerance(), hull(), or minkowskiSum() / minkowskiDifference().
+   * Deferred ops (Boolean operators, transforms, batch ops) ignore any
+   * attached ctx and produce a result with no attached ctx. See
+   * ExecutionContext for the full model.
+   *
+   * @group Information
+   */
+  withContext(ctx: ExecutionContext): Manifold;
 
   // Export
 
@@ -1305,6 +1342,14 @@ export class Mesh {
   runTransform: Float32Array;
 
   /**
+   * Optional: For each run, a bitmask of flags. Bit 0 = backside (this run
+   * is on the backside of its original mesh, e.g. from a subtraction).
+   * Bit 1 = hasNormals (the first three extra-property channels of this run
+   * hold world-frame vertex normals). See `backside(run)` / `hasNormals(run)`.
+   */
+  runFlags: Uint8Array;
+
+  /**
    * Optional: Length NumTri, contains the source face ID this triangle comes
    * from. Simplification will maintain all edges between triangles with
    * different faceIDs. Input faceIDs will be maintained to the outputs, but if
@@ -1397,4 +1442,31 @@ export class Mesh {
    * @param run triangle run index.
    */
   transform(run: number): Mat4;
+
+  /**
+   * Returns true if this triangle run is on the backside compared to the
+   * original mesh, e.g. from a subtraction. Informational only - the
+   * framework already orients stored normals so the standard `getMesh()`
+   * flow returns world-frame values regardless of this bit.
+   *
+   * @param run triangle run index.
+   */
+  backside(run: number): boolean;
+
+  /**
+   * Returns true if the first three extra-property channels of this run
+   * carry world-frame vertex normals (set by `calculateNormals(0)` and
+   * round-tripped via `runFlags` bit 1). Consumers should treat the slot
+   * as normals and skip re-applying `runTransform` to it.
+   *
+   * hasNormals is per-run, so different runs may set it differently.
+   * Behavior is undefined when a single propVert is shared by triangles
+   * from runs that disagree - the slot has one interpretation, and a
+   * transform rotates it for hasNormals=true and clobbers any
+   * hasNormals=false sharer. Standard `calculateNormals` / boolean /
+   * compose outputs never produce that shape.
+   *
+   * @param run triangle run index.
+   */
+  hasNormals(run: number): boolean;
 }

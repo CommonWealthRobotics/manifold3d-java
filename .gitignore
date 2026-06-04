@@ -136,3 +136,6 @@ CMakeSettings.json
 extras/ember_tests/testfiles/raw_meshes
 
 /diff.txt
+#Eclipse project files
+/.project
+/.cproject

@@ -1,6 +1,6 @@
 {
   "name": "manifold-3d",
-  "version": "3.4.1",
+  "version": "3.5.1",
   "description": "Geometry library for topological robustness",
   "main": "manifold.js",
   "bin": {
@@ -10,7 +10,7 @@
     "prebuild": "api-extractor run -c api-extractor-manifold.json",
     "build": "tsc && node ./esbuild.mjs",
     "build:wasm": "mkdir -p ../../buildWASM && cd ../../buildWASM && emcmake cmake -DCMAKE_BUILD_TYPE=MinSizeRel .. && emmake make",
-    "build:all": "npm run build && npm run build:editor && npm run build:examples",
+    "build:all": "npm run build:wasm && npm run build && npm run build:editor && npm run build:examples",
     "build:editor": "cd examples/editor && npm run build",
     "build:examples": "(cd examples/three && npm run build) && (cd examples/model-viewer && npm run build) && (cd examples/make-manifold && npm run build)",
     "ci:all": "npm ci && npm run ci:editor && npm run ci:examples",
@@ -138,6 +138,7 @@
     "@vitest/coverage-v8": "^4.0.17",
     "@vitest/ui": "^4.0.17",
     "glob": "^13.0.0",
+    "gltf-validator": "^2.0.0-dev.3.10",
     "stacktrace-parser": "^0.1.11",
     "typedoc": "^0.28.16",
     "typescript": "^5.9.3",
