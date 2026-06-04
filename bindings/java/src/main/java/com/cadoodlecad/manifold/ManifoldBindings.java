@@ -52,11 +52,11 @@ public class ManifoldBindings {
 			// Detect platform
 			String os = System.getProperty("os.name").toLowerCase();
 			String arch = System.getProperty("os.arch").toLowerCase();
-
 			if (arch.equals("amd64"))
 				arch = "x86_64";
 			if (arch.contains("aarch"))
 				arch = "arm64";
+			System.out.println("Loading Library for "+os+" on "+arch);
 			String platform;
 			String extension;
 			if (os.contains("win")) {
@@ -182,6 +182,12 @@ public class ManifoldBindings {
 
 		// ManifoldManifold* manifold_difference(void* mem, ManifoldManifold* a, ManifoldManifold* b);
 		load("manifold_difference", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS);
+		
+		// ManifoldManifold* manifold_minkowski_sum(void* mem, ManifoldManifold* a, ManifoldManifold* b);
+		load("manifold_minkowski_sum", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS);
+
+		// ManifoldManifold* manifold_minkowski_difference(void* mem, ManifoldManifold* a, ManifoldManifold* b);
+		load("manifold_minkowski_difference", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS);
 
 		// ManifoldManifold* manifold_intersection(void* mem, ManifoldManifold* a, ManifoldManifold* b);
 		load("manifold_intersection", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
@@ -628,6 +634,15 @@ public class ManifoldBindings {
 	public MemorySegment difference(MemorySegment a, MemorySegment b) throws Throwable {
 		MemorySegment mem = (MemorySegment) functions.get("manifold_alloc_manifold").invoke();
 		return (MemorySegment) functions.get("manifold_difference").invoke(mem, a, b);
+	}
+	public MemorySegment minkowski_difference(MemorySegment a, MemorySegment b) throws Throwable {
+		MemorySegment mem = (MemorySegment) functions.get("manifold_alloc_manifold").invoke();
+		return (MemorySegment) functions.get("manifold_minkowski_difference").invoke(mem, a, b);
+	}
+
+	public MemorySegment minkowski_sum(MemorySegment a, MemorySegment b) throws Throwable {
+		MemorySegment mem = (MemorySegment) functions.get("manifold_alloc_manifold").invoke();
+		return (MemorySegment) functions.get("manifold_minkowski_sum").invoke(mem, a, b);
 	}
 
 	public MemorySegment intersection(MemorySegment a, MemorySegment b) throws Throwable {
