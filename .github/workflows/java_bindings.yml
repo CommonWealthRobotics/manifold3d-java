@@ -241,7 +241,6 @@ jobs:
           -A x64 -B build
 
         cmake --build build --target ALL_BUILD --config Release
-        cd ..
         mkdir -p bindings\java\src\main\resources\manifold3d\natives\win-x86_64\
         echo "List files"
         Get-ChildItem -Path . -Recurse -Filter *.dll | Select-Object -ExpandProperty FullName
