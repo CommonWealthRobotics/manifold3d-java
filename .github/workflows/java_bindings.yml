@@ -196,35 +196,35 @@ jobs:
         java-version: 25
         jdkFile: ./zulu25.32.21-ca-fx-jdk25.0.2-win_x64.zip
     - name: Build for Java
-      shell: bash
+      shell: pwsh
       run: |
 
-        cmake . \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DBUILD_SHARED_LIBS=ON \
-          -DMANIFOLD_STRICT=ON \
-          -DMANIFOLD_USE_BUILTIN_TBB=ON \
-          -DMANIFOLD_USE_BUILTIN_CLIPPER2=ON \
-          -DMANIFOLD_DEBUG=ON \
-          -DMANIFOLD_ASSERT=ON \
-          -DMANIFOLD_CROSS_SECTION=ON \
-          -DMANIFOLD_EXPORT=ON \
-          -DMANIFOLD_PAR=ON \
-          -DFETCHCONTENT_SOURCE_DIR_TBB=tbb \
-          -DFETCHCONTENT_SOURCE_DIR_CLIPPER2=clipper2 \
-          -DFETCHCONTENT_SOURCE_DIR_NANOBIND=nanobind \
-          -DFETCHCONTENT_SOURCE_DIR_GOOGLETEST=gtest \
+        cmake . `
+          -DCMAKE_BUILD_TYPE=Release `
+          -DBUILD_SHARED_LIBS=ON `
+          -DMANIFOLD_STRICT=ON `
+          -DMANIFOLD_USE_BUILTIN_TBB=ON `
+          -DMANIFOLD_USE_BUILTIN_CLIPPER2=ON `
+          -DMANIFOLD_DEBUG=ON `
+          -DMANIFOLD_ASSERT=ON `
+          -DMANIFOLD_CROSS_SECTION=ON `
+          -DMANIFOLD_EXPORT=ON `
+          -DMANIFOLD_PAR=ON `
+          -DFETCHCONTENT_SOURCE_DIR_TBB=tbb `
+          -DFETCHCONTENT_SOURCE_DIR_CLIPPER2=clipper2 `
+          -DFETCHCONTENT_SOURCE_DIR_NANOBIND=nanobind `
+          -DFETCHCONTENT_SOURCE_DIR_GOOGLETEST=gtest `
           -A x64 -B build
 
         cmake --build build --target ALL_BUILD --config Release
         cd ..
-        mkdir -p bindings/java/src/main/resources/manifold3d/natives/win-x86_64/
+        mkdir -p bindings\java\src\main\resources\manifold3d\natives\win-x86_64\
         echo "List files"
-        find . -name "*.dll" -type f
+        Get-ChildItem -Path . -Recurse -Filter *.dll | Select-Object -ExpandProperty FullName
         echo "Copy existing files..."
-        cp build/lib/Release/manifold.dll bindings/java/src/main/resources/manifold3d/natives/win-x86_64/manifold.dll
-        cp build/lib/Release/manifoldc.dll bindings/java/src/main/resources/manifold3d/natives/win-x86_64/manifoldc.dll
-        cd bindings/java
+        cp build\lib\Release\manifold.dll bindings\java\src\main\resources\manifold3d\natives\win-x86_64\manifold.dll
+        cp build\lib\Release\manifoldc.dll bindings\java\src\main\resources\manifold3d\natives\win-x86_64\manifoldc.dll
+        cd bindings\java
         mvn test --file pom.xml --no-transfer-progress
         cd ..
         cd ..
