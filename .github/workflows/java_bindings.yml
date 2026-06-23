@@ -305,6 +305,7 @@ jobs:
            bindings/java/src/main/resources/manifold3d/natives/win-x86_64/
         cp build/lib/Release/manifoldc.dll \
            bindings/java/src/main/resources/manifold3d/natives/win-x86_64/
+        cd bindings/java/
         mvn test --file pom.xml --no-transfer-progress
         cd ..
         cd ..
