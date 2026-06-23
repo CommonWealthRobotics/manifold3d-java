@@ -258,6 +258,7 @@ jobs:
           -DCMAKE_BUILD_TYPE=Release \
           -DBUILD_SHARED_LIBS=ON \
           -DMANIFOLD_STRICT=ON \
+          -DMANIFOLD_USE_BUILTIN_TBB=ON \
           -DMANIFOLD_DEBUG=ON \
           -DMANIFOLD_ASSERT=ON \
           -DMANIFOLD_CROSS_SECTION=ON \
