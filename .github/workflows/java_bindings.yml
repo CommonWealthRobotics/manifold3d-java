@@ -219,6 +219,7 @@ jobs:
           -DMANIFOLD_PAR=ON \
           -DMANIFOLD_USE_BUILTIN_TBB=ON \
           -DFETCHCONTENT_SOURCE_DIR_CLIPPER2=../clipper2 \
+          -DFETCHCONTENT_SOURCE_DIR_NANOBIND=../nanobind \
           -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
           -DCMAKE_BUILD_RPATH='$ORIGIN' ..
         make
@@ -298,7 +299,7 @@ jobs:
           -A x64 -B build
 
         cmake --build build --target ALL_BUILD --config Release
-        cd ..
+        find build -name "*.dll"
         mkdir -p bindings/java/src/main/resources/manifold3d/natives/win-x86_64
         cp build/lib/Release/manifold.dll \
            bindings/java/src/main/resources/manifold3d/natives/win-x86_64/
