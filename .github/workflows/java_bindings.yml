@@ -183,9 +183,7 @@ jobs:
     runs-on: windows-2025
     steps:
     - uses: actions/checkout@v4
-    - uses: jwlawson/actions-setup-cmake@v2
-      with:
-        cmake-version: 4.0.2
+    - uses: lukka/get-cmake@v4.2.3
     - uses: ilammy/msvc-dev-cmd@v1
     - name: Pull a JavaFX JDK
       run: curl -O https://cdn.azul.com/zulu/bin/zulu25.32.21-ca-fx-jdk25.0.2-win_x64.zip
@@ -196,34 +194,34 @@ jobs:
         java-version: 25
         jdkFile: ./zulu25.32.21-ca-fx-jdk25.0.2-win_x64.zip
     - name: Build for Java
-      shell: pwsh
+      shell: bash
       run: |
 
-        cmake . `
-          -DCMAKE_BUILD_TYPE=Release `
-          -DBUILD_SHARED_LIBS=ON `
-          -DMANIFOLD_STRICT=ON `
-          -DMANIFOLD_USE_BUILTIN_TBB=ON `
-          -DMANIFOLD_USE_BUILTIN_CLIPPER2=ON `
-          -DMANIFOLD_DEBUG=ON `
-          -DMANIFOLD_ASSERT=ON `
-          -DMANIFOLD_CROSS_SECTION=ON `
-          -DMANIFOLD_EXPORT=ON `
-          -DMANIFOLD_PAR=ON `
-          -DFETCHCONTENT_SOURCE_DIR_TBB=tbb `
-          -DFETCHCONTENT_SOURCE_DIR_CLIPPER2=clipper2 `
-          -DFETCHCONTENT_SOURCE_DIR_NANOBIND=nanobind `
-          -DFETCHCONTENT_SOURCE_DIR_GOOGLETEST=gtest `
+        cmake . \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DBUILD_SHARED_LIBS=ON \
+          -DMANIFOLD_STRICT=ON \
+          -DMANIFOLD_USE_BUILTIN_TBB=ON \
+          -DMANIFOLD_USE_BUILTIN_CLIPPER2=ON \
+          -DMANIFOLD_DEBUG=ON \
+          -DMANIFOLD_ASSERT=ON \
+          -DMANIFOLD_CROSS_SECTION=ON \
+          -DMANIFOLD_EXPORT=ON \
+          -DMANIFOLD_PAR=ON \
+          -DFETCHCONTENT_SOURCE_DIR_TBB=tbb \
+          -DFETCHCONTENT_SOURCE_DIR_CLIPPER2=clipper2 \
+          -DFETCHCONTENT_SOURCE_DIR_NANOBIND=nanobind \
+          -DFETCHCONTENT_SOURCE_DIR_GOOGLETEST=gtest \
           -A x64 -B build
 
         cmake --build build --target ALL_BUILD --config Release
         cd ..
         mkdir -p bindings\java\src\main\resources\manifold3d\natives\win-x86_64\
         echo "List files"
-        Get-ChildItem -Path . -Recurse -Filter *.dll | Select-Object -ExpandProperty FullName
+        find . -name "*.dll" -type f
         echo "Copy existing files..."
-        cp build\lib\Release\manifold.dll bindings\java\src\main\resources\manifold3d\natives\win-x86_64\manifold.dll
-        cp build\lib\Release\manifoldc.dll bindings\java\src\main\resources\manifold3d\natives\win-x86_64\manifoldc.dll
+        cp build/lib/Release/manifold.dll bindings/java/src/main/resources/manifold3d/natives/win-x86_64/manifold.dll
+        cp build/lib/Release/manifoldc.dll bindings/java/src/main/resources/manifold3d/natives/win-x86_64/manifoldc.dll
         cd bindings\java
         mvn test --file pom.xml --no-transfer-progress
         cd ..
