@@ -44,36 +44,28 @@ jobs:
         echo "PATH=$(pwd)/zulu25.32.21-ca-fx-jdk25.0.2-macosx_x64/bin:$PATH" >> $GITHUB_ENV
     - name: Build
       run: |
-        mkdir build
-        cd build
-        cmake -DCMAKE_OSX_ARCHITECTURES=x86_64 -DMANIFOLD_CROSS_SECTION=ON -DMANIFOLD_USE_BUILTIN_CLIPPER2=ON -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DMANIFOLD_STRICT=ON -DMANIFOLD_USE_BUILTIN_TBB=ON -DMANIFOLD_DEBUG=ON -DMANIFOLD_ASSERT=ON -DMANIFOLD_PYBIND=OFF -DMANIFOLD_PAR=ON -DCMAKE_OSX_ARCHITECTURES=x86_64 -DCMAKE_BUILD_RPATH='@loader_path' .. && make
-        cd ..
-        mkdir -p ./bindings/java/src/main/resources/manifold3d/natives/mac-x86_64/
-        ls -al ./build/src/
-        echo "Extras Directory: "
-        ls -al ./build/extras/
-        cp ./build/src/libmanifold.dylib ./bindings/java/src/main/resources/manifold3d/natives/mac-x86_64/
-        ln -sf libmanifold.dylib ./bindings/java/src/main/resources/manifold3d/natives/mac-x86_64/libmanifold.3.dylib
-        ln -sf libmanifold.3.dylib ./bindings/java/src/main/resources/manifold3d/natives/mac-x86_64/libmanifold.3.5.1.dylib
-        cp ./build/bindings/c/libmanifoldc.dylib ./bindings/java/src/main/resources/manifold3d/natives/mac-x86_64/
-        ln -sf libmanifoldc.dylib ./bindings/java/src/main/resources/manifold3d/natives/mac-x86_64/libmanifoldc.3.dylib
-        ln -sf libmanifoldc.3.dylib ./bindings/java/src/main/resources/manifold3d/natives/mac-x86_64/libmanifoldc.3.5.1.dylib
-        cd bindings/java/
-        mvn test --file pom.xml --no-transfer-progress
+        bash bindings/java/scripts/macos/buildC.sh
     - name: Upload native libraries
       uses: actions/upload-artifact@v4
       with:
         name: native-libs-mac-x86_64
         path: bindings/java/src/main/resources/manifold3d/natives/
   build_mac_java:
-    name: JAVA Mac arm64 
+    name: JAVA Mac arm64
     timeout-minutes: 30
     runs-on: macos-14
     steps:
     - name: Install common dependencies
       run: |
-        brew install googletest
         pip install trimesh pytest maven
+    - name: Build googletest for arm64
+      run: |
+        git clone https://github.com/google/googletest.git
+        cd googletest
+        mkdir build && cd build
+        cmake -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_BUILD_TYPE=Release ..
+        make
+        sudo make install
     - uses: actions/checkout@v4
     - uses: jwlawson/actions-setup-cmake@v2
       with:
@@ -86,27 +78,12 @@ jobs:
         echo "PATH=$(pwd)/zulu25.32.21-ca-fx-jdk25.0.2-macosx_aarch64/bin:$PATH" >> $GITHUB_ENV
     - name: Build
       run: |
-        mkdir build
-        cd build
-        cmake  -DMANIFOLD_CROSS_SECTION=ON -DMANIFOLD_USE_BUILTIN_CLIPPER2=ON -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DMANIFOLD_STRICT=ON -DMANIFOLD_USE_BUILTIN_TBB=ON -DMANIFOLD_DEBUG=ON -DMANIFOLD_ASSERT=ON -DMANIFOLD_PYBIND=OFF -DMANIFOLD_PAR=ON -DCMAKE_BUILD_RPATH='@loader_path' .. && make
-        cd ..
-        mkdir -p ./bindings/java/src/main/resources/manifold3d/natives/mac-arm64/
-        ls -al ./build/src/
-        echo "Extras Directory: "
-        ls -al ./build/extras/
-        cp ./build/src/libmanifold.dylib ./bindings/java/src/main/resources/manifold3d/natives/mac-arm64/
-        ln -sf libmanifold.dylib ./bindings/java/src/main/resources/manifold3d/natives/mac-arm64/libmanifold.3.dylib
-        ln -sf libmanifold.3.dylib ./bindings/java/src/main/resources/manifold3d/natives/mac-arm64/libmanifold.3.5.1.dylib
-        cp ./build/bindings/c/libmanifoldc.dylib ./bindings/java/src/main/resources/manifold3d/natives/mac-arm64/
-        ln -sf libmanifoldc.dylib ./bindings/java/src/main/resources/manifold3d/natives/mac-arm64/libmanifoldc.3.dylib
-        ln -sf libmanifoldc.3.dylib ./bindings/java/src/main/resources/manifold3d/natives/mac-arm64/libmanifoldc.3.5.1.dylib
-        cd bindings/java/
-        mvn test --file pom.xml --no-transfer-progress
+        bash bindings/java/scripts/macos/buildC-arm.sh
     - name: Upload native libraries
       uses: actions/upload-artifact@v4
       with:
         name: native-libs-mac-arm64
-        path: bindings/java/src/main/resources/manifold3d/natives/        
+        path: bindings/java/src/main/resources/manifold3d/natives/
   build_linux_java_ARM:
     name: JAVA Linux_ARM Build
     timeout-minutes: 45
@@ -136,7 +113,7 @@ jobs:
         jdkFile: ./zulu25.32.21-ca-fx-jdk25.0.2-linux_aarch64.tar.gz
     - name: Build With parallelization
       run: |
-         bash bindings/java/scripts/linux/buildC-arm.sh 
+         bash bindings/java/scripts/linux/buildC-arm.sh
     - name: Upload native libraries
       uses: actions/upload-artifact@v4
       with:
@@ -170,14 +147,14 @@ jobs:
         jdkFile: ./zulu25.32.21-ca-fx-jdk25.0.2-linux_x64.tar.gz
     - name: Build With parallelization
       run: |
-        bash bindings/java/scripts/linux/buildC.sh 
+        bash bindings/java/scripts/linux/buildC.sh
     - name: Upload native libraries
       uses: actions/upload-artifact@v4
       with:
         name: native-libs-linux-x86
         path: bindings/java/src/main/resources/manifold3d/natives/
   build_windows_java_x86:
-    name: JAVA Windows x86 
+    name: JAVA Windows x86
     timeout-minutes: 30
     runs-on: windows-2025
     steps:
@@ -219,39 +196,12 @@ jobs:
     - name: Build for Java
       shell: bash
       run: |
-
-        cmake . \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DBUILD_SHARED_LIBS=ON \
-          -DMANIFOLD_STRICT=ON \
-          -DMANIFOLD_USE_BUILTIN_TBB=ON \
-          -DMANIFOLD_DEBUG=ON \
-          -DMANIFOLD_ASSERT=ON \
-          -DMANIFOLD_CROSS_SECTION=ON \
-          -DMANIFOLD_EXPORT=ON \
-          -DMANIFOLD_PAR=ON \
-          -DFETCHCONTENT_SOURCE_DIR_TBB=tbb \
-          -DFETCHCONTENT_SOURCE_DIR_CLIPPER2=clipper2 \
-          -DFETCHCONTENT_SOURCE_DIR_NANOBIND=nanobind \
-          -DFETCHCONTENT_SOURCE_DIR_GOOGLETEST=gtest \
-          -A x64 -B build
-
-        cmake --build build --target ALL_BUILD --config Release
-        find build -name "*.dll"
-        mkdir -p bindings/java/src/main/resources/manifold3d/natives/win-x86_64
-        cp build/lib/Release/manifold.dll \
-           bindings/java/src/main/resources/manifold3d/natives/win-x86_64/
-        cp build/lib/Release/manifoldc.dll \
-           bindings/java/src/main/resources/manifold3d/natives/win-x86_64/
-        cd bindings/java/
-        mvn test --file pom.xml --no-transfer-progress
-        cd ..
-        cd ..
+        bash bindings/java/scripts/windows/buildC.sh
     - name: Upload native libraries
       uses: actions/upload-artifact@v4
       with:
         name: native-libs-windows-x86
-        path: bindings/java/src/main/resources/manifold3d/natives/       
+        path: bindings/java/src/main/resources/manifold3d/natives/
   deploy_java:
       name: JAVA Deploy Jar to Clojars
       runs-on: ubuntu-latest
