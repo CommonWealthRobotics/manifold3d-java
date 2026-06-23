@@ -107,18 +107,29 @@ jobs:
       CC: gcc-14
       CXX: g++-14
     steps:
+    - uses: actions/checkout@v6
+    - uses: lukka/get-cmake@v4.2.3
     - uses: actions/setup-python@v5
       with:
         python-version: '3.x'
+        cache: 'pip'
     - name: Install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install libgtest-dev libassimp-dev git libtbb-dev pkg-config libpython3-dev lcov
-        python -m pip install -U trimesh pytest
-    - uses: actions/checkout@v4
-    - uses: jwlawson/actions-setup-cmake@v2
+      uses: awalsh128/cache-apt-pkgs-action@v1.6.0
       with:
-        cmake-version: 4.0.2
+        packages: libgtest-dev libassimp-dev git libtbb-dev pkg-config libpython3-dev
+    - run: pip install -U trimesh pytest
+    - &clone-clipper2-arm
+      uses: ./.github/actions/git-clone
+      with:
+        name: clipper2
+        url: https://github.com/AngusJohnson/Clipper2.git
+        rev: 46f639177fe418f9689e8ddb74f08a870c71f5b4
+    - &clone-nanobind-arm
+      uses: ./.github/actions/git-clone
+      with:
+        name: nanobind
+        url: https://github.com/wjakob/nanobind.git
+        tag: v2.12.0
     - name: Pull a JavaFX JDK
       run: wget https://cdn.azul.com/zulu/bin/zulu25.32.21-ca-fx-jdk25.0.2-linux_aarch64.tar.gz
 
@@ -129,7 +140,14 @@ jobs:
         jdkFile: ./zulu25.32.21-ca-fx-jdk25.0.2-linux_aarch64.tar.gz
     - name: Build With parallelization
       run: |
-        bash bindings/java/scripts/linux/buildC-arm.sh
+        mkdir build
+        cd build
+        cmake -DMANIFOLD_CROSS_SECTION=ON -DCMAKE_BUILD_TYPE=Release -DASSIMP_ENABLE=ON -DBUILD_SHARED_LIBS=ON -DMANIFOLD_DEBUG=ON -DMANIFOLD_EXPORT=ON -DMANIFOLD_PAR=ON -DMANIFOLD_USE_BUILTIN_TBB=ON -DFETCHCONTENT_SOURCE_DIR_CLIPPER2=../clipper2 -DFETCHCONTENT_SOURCE_DIR_NANOBIND=../nanobind ..
+        make
+        cd ..
+        mkdir -p ./bindings/java/src/main/resources/manifold3d/natives/linux-arm64/
+        cp ./build/src/libmanifold.so ./bindings/java/src/main/resources/manifold3d/natives/linux-arm64/
+        cp ./build/bindings/c/libmanifoldc.so ./bindings/java/src/main/resources/manifold3d/natives/linux-arm64/
         cd bindings/java/
         mvn test --file pom.xml --no-transfer-progress
     - name: Upload native libraries
@@ -141,25 +159,33 @@ jobs:
     name: JAVA Linux_x86 Build
     timeout-minutes: 45
     runs-on: ubuntu-24.04
-    container:
-      image: ubuntu:20.04
     env:
       CC: gcc
       CXX: g++
-      DEBIAN_FRONTEND: noninteractive
     steps:
+    - uses: actions/checkout@v6
+    - uses: lukka/get-cmake@v4.2.3
     - uses: actions/setup-python@v5
       with:
         python-version: '3.x'
+        cache: 'pip'
     - name: Install dependencies
-      run: |
-        apt-get update
-        apt-get install -y gcc g++ cmake libgtest-dev libtbb-dev \
-          pkg-config libpython3-dev git curl wget make python3-pip maven
-    - uses: actions/checkout@v4
-    - uses: jwlawson/actions-setup-cmake@v2
+      uses: awalsh128/cache-apt-pkgs-action@v1.6.0
       with:
-        cmake-version: 4.0.2
+        packages: libgtest-dev libtbb-dev pkg-config libpython3-dev
+    - run: pip install -U trimesh pytest
+    - &clone-clipper2-x86
+      uses: ./.github/actions/git-clone
+      with:
+        name: clipper2
+        url: https://github.com/AngusJohnson/Clipper2.git
+        rev: 46f639177fe418f9689e8ddb74f08a870c71f5b4
+    - &clone-nanobind-x86
+      uses: ./.github/actions/git-clone
+      with:
+        name: nanobind
+        url: https://github.com/wjakob/nanobind.git
+        tag: v2.12.0
     - name: Pull a JavaFX JDK
       run: wget https://cdn.azul.com/zulu/bin/zulu25.32.21-ca-fx-jdk25.0.2-linux_x64.tar.gz
     - name: Set Java
@@ -169,7 +195,14 @@ jobs:
         jdkFile: ./zulu25.32.21-ca-fx-jdk25.0.2-linux_x64.tar.gz
     - name: Build With parallelization
       run: |
-        bash bindings/java/scripts/linux/buildC.sh
+        mkdir build
+        cd build
+        cmake -DMANIFOLD_CROSS_SECTION=ON -DMANIFOLD_USE_BUILTIN_CLIPPER2=ON -DCMAKE_BUILD_TYPE=Release -DASSIMP_ENABLE=OFF -DBUILD_SHARED_LIBS=ON -DMANIFOLD_DEBUG=OFF -DMANIFOLD_TEST=OFF -DMANIFOLD_EXTRAS=OFF -DMANIFOLD_EXPORT=OFF -DMANIFOLD_PAR=ON -DMANIFOLD_USE_BUILTIN_TBB=ON ..
+        make
+        cd ..
+        mkdir -p ./bindings/java/src/main/resources/manifold3d/natives/linux-x86_64/
+        cp ./build/src/libmanifold.so ./bindings/java/src/main/resources/manifold3d/natives/linux-x86_64/
+        cp ./build/bindings/c/libmanifoldc.so ./bindings/java/src/main/resources/manifold3d/natives/linux-x86_64/
         cd bindings/java/
         mvn test --file pom.xml --no-transfer-progress
     - name: Upload native libraries
@@ -182,8 +215,32 @@ jobs:
     timeout-minutes: 30
     runs-on: windows-2025
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - uses: lukka/get-cmake@v4.2.3
+    - &clone-tbb-win
+      uses: ./.github/actions/git-clone
+      with:
+        name: tbb
+        url: https://github.com/oneapi-src/oneTBB.git
+        tag: v2022.3.0
+    - &clone-clipper2-win
+      uses: ./.github/actions/git-clone
+      with:
+        name: clipper2
+        url: https://github.com/AngusJohnson/Clipper2.git
+        rev: 46f639177fe418f9689e8ddb74f08a870c71f5b4
+    - &clone-nanobind-win
+      uses: ./.github/actions/git-clone
+      with:
+        name: nanobind
+        url: https://github.com/wjakob/nanobind.git
+        tag: v2.12.0
+    - &clone-gtest-win
+      uses: ./.github/actions/git-clone
+      with:
+        name: gtest
+        url: https://github.com/google/googletest.git
+        tag: v1.17.0
     - uses: ilammy/msvc-dev-cmd@v1
     - name: Pull a JavaFX JDK
       run: curl -O https://cdn.azul.com/zulu/bin/zulu25.32.21-ca-fx-jdk25.0.2-win_x64.zip
@@ -201,8 +258,6 @@ jobs:
           -DCMAKE_BUILD_TYPE=Release \
           -DBUILD_SHARED_LIBS=ON \
           -DMANIFOLD_STRICT=ON \
-          -DMANIFOLD_USE_BUILTIN_TBB=ON \
-          -DMANIFOLD_USE_BUILTIN_CLIPPER2=ON \
           -DMANIFOLD_DEBUG=ON \
           -DMANIFOLD_ASSERT=ON \
           -DMANIFOLD_CROSS_SECTION=ON \
@@ -218,10 +273,10 @@ jobs:
         cd ..
         mkdir -p bindings\java\src\main\resources\manifold3d\natives\win-x86_64\
         echo "List files"
-        find . -name "*.dll" -type f
+        Get-ChildItem -Path . -Recurse -Filter *.dll | Select-Object -ExpandProperty FullName
         echo "Copy existing files..."
-        cp build/lib/Release/manifold.dll bindings/java/src/main/resources/manifold3d/natives/win-x86_64/manifold.dll
-        cp build/lib/Release/manifoldc.dll bindings/java/src/main/resources/manifold3d/natives/win-x86_64/manifoldc.dll
+        cp build\lib\Release\manifold.dll bindings\java\src\main\resources\manifold3d\natives\win-x86_64\manifold.dll
+        cp build\lib\Release\manifoldc.dll bindings\java\src\main\resources\manifold3d\natives\win-x86_64\manifoldc.dll
         cd bindings\java
         mvn test --file pom.xml --no-transfer-progress
         cd ..
