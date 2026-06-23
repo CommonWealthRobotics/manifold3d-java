@@ -681,6 +681,13 @@ class ManifoldBindingsTest {
 				}
 				assertTrue(found, "Expected corner (" + exp[0] + "," + exp[1] + ") not found in slice");
 			}
+			// Outset by 1 mm
+			ArrayList<double[][]> outset = mb.sliceWithOffset(
+					cube, 0.0, +1.0, ManifoldBindings.JoinType.ROUND, 2.0, 0);
+
+			// Inset by 1 mm
+			ArrayList<double[][]> inset = mb.sliceWithOffset(
+					cube, 0.0, -1.0, ManifoldBindings.JoinType.ROUND, 2.0, 0);
 
 		} finally {
 			mb.safeDelete(cube);

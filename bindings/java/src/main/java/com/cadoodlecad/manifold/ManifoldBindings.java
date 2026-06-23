@@ -15,6 +15,7 @@ import java.nio.*;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.zip.*;
+
 @SuppressWarnings("preview")
 public class ManifoldBindings {
 	public enum ManifoldError {
@@ -27,6 +28,26 @@ public class ManifoldBindings {
 			if (code < 0 || code >= values.length)
 				throw new IllegalArgumentException("Unknown ManifoldError code: " + code);
 			return values[code];
+		}
+	}
+	// ===== Constants to add alongside the existing OPTYPE_* constants =====
+
+	// ManifoldFillRule values
+	// ===== Enums to add alongside ManifoldError =====
+
+	public enum FillRule {
+		EVEN_ODD, NON_ZERO, POSITIVE, NEGATIVE;
+
+		public int toInt() {
+			return ordinal();
+		}
+	}
+
+	public enum JoinType {
+		SQUARE, ROUND, MITER;
+
+		public int toInt() {
+			return ordinal();
 		}
 	}
 
@@ -56,7 +77,7 @@ public class ManifoldBindings {
 				arch = "x86_64";
 			if (arch.contains("aarch"))
 				arch = "arm64";
-			System.out.println("Loading Library for "+os+" on "+arch);
+			System.out.println("Loading Library for " + os + " on " + arch);
 			String platform;
 			String extension;
 			if (os.contains("win")) {
@@ -157,11 +178,13 @@ public class ManifoldBindings {
 		// ManifoldManifold* manifold_tetrahedron(void* mem);
 		load("manifold_tetrahedron", ValueLayout.ADDRESS, ValueLayout.ADDRESS);
 
-		// ManifoldManifold* manifold_cube(void* mem, double x, double y, double z, int center);
+		// ManifoldManifold* manifold_cube(void* mem, double x, double y, double z, int
+		// center);
 		load("manifold_cube", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_DOUBLE,
 				ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_INT);
 
-		// ManifoldManifold* manifold_sphere(void* mem, double radius, int circular_segments);
+		// ManifoldManifold* manifold_sphere(void* mem, double radius, int
+		// circular_segments);
 		load("manifold_sphere", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_DOUBLE,
 				ValueLayout.JAVA_INT);
 
@@ -177,29 +200,38 @@ public class ManifoldBindings {
 		load("manifold_boolean", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
 				ValueLayout.JAVA_INT);
 
-		// ManifoldManifold* manifold_union(void* mem, ManifoldManifold* a, ManifoldManifold* b);
+		// ManifoldManifold* manifold_union(void* mem, ManifoldManifold* a,
+		// ManifoldManifold* b);
 		load("manifold_union", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS);
 
-		// ManifoldManifold* manifold_difference(void* mem, ManifoldManifold* a, ManifoldManifold* b);
+		// ManifoldManifold* manifold_difference(void* mem, ManifoldManifold* a,
+		// ManifoldManifold* b);
 		load("manifold_difference", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS);
-		
-		// ManifoldManifold* manifold_minkowski_sum(void* mem, ManifoldManifold* a, ManifoldManifold* b);
-		load("manifold_minkowski_sum", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS);
 
-		// ManifoldManifold* manifold_minkowski_difference(void* mem, ManifoldManifold* a, ManifoldManifold* b);
-		load("manifold_minkowski_difference", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS);
+		// ManifoldManifold* manifold_minkowski_sum(void* mem, ManifoldManifold* a,
+		// ManifoldManifold* b);
+		load("manifold_minkowski_sum", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+				ValueLayout.ADDRESS);
 
-		// ManifoldManifold* manifold_intersection(void* mem, ManifoldManifold* a, ManifoldManifold* b);
+		// ManifoldManifold* manifold_minkowski_difference(void* mem, ManifoldManifold*
+		// a, ManifoldManifold* b);
+		load("manifold_minkowski_difference", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+				ValueLayout.ADDRESS);
+
+		// ManifoldManifold* manifold_intersection(void* mem, ManifoldManifold* a,
+		// ManifoldManifold* b);
 		load("manifold_intersection", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
 				ValueLayout.ADDRESS);
 
-		// ManifoldManifold* manifold_batch_boolean(void* mem, ManifoldManifoldVec* ms, ManifoldOpType op);
+		// ManifoldManifold* manifold_batch_boolean(void* mem, ManifoldManifoldVec* ms,
+		// ManifoldOpType op);
 		load("manifold_batch_boolean", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
 				ValueLayout.JAVA_INT);
 
 		// ===== Vector operations =====
 
-		// void manifold_manifold_vec_push_back(ManifoldManifoldVec* ms, ManifoldManifold* m);
+		// void manifold_manifold_vec_push_back(ManifoldManifoldVec* ms,
+		// ManifoldManifold* m);
 		loadVoid("manifold_manifold_vec_push_back", ValueLayout.ADDRESS, ValueLayout.ADDRESS);
 
 		// ===== Transforms =====
@@ -212,37 +244,45 @@ public class ManifoldBindings {
 				ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE,
 				ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE);
 
-		// ManifoldManifold* manifold_translate(void* mem, ManifoldManifold* m, double x, double y, double z);
+		// ManifoldManifold* manifold_translate(void* mem, ManifoldManifold* m, double
+		// x, double y, double z);
 		load("manifold_translate", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
 				ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE);
 
-		// ManifoldManifold* manifold_scale(void* mem, ManifoldManifold* m, double x, double y, double z);
+		// ManifoldManifold* manifold_scale(void* mem, ManifoldManifold* m, double x,
+		// double y, double z);
 		load("manifold_scale", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_DOUBLE,
 				ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE);
 
-		// ManifoldManifold* manifold_mirror(void* mem, ManifoldManifold* m, double nx, double ny, double nz);
+		// ManifoldManifold* manifold_mirror(void* mem, ManifoldManifold* m, double nx,
+		// double ny, double nz);
 		load("manifold_mirror", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_DOUBLE,
 				ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE);
 
-		// ManifoldManifold* manifold_rotate(void* mem, ManifoldManifold* m, double x, double y, double z);
+		// ManifoldManifold* manifold_rotate(void* mem, ManifoldManifold* m, double x,
+		// double y, double z);
 		load("manifold_rotate", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_DOUBLE,
 				ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE);
 
 		// ===== Refinement =====
 
-		// ManifoldManifold* manifold_refine(void* mem, ManifoldManifold* m, int refine);
+		// ManifoldManifold* manifold_refine(void* mem, ManifoldManifold* m, int
+		// refine);
 		load("manifold_refine", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT);
 
-		// ManifoldManifold* manifold_refine_to_length(void* mem, ManifoldManifold* m, double length);
-		load("manifold_refine_to_length",ValueLayout.ADDRESS,  ValueLayout.ADDRESS,  ValueLayout.ADDRESS,
+		// ManifoldManifold* manifold_refine_to_length(void* mem, ManifoldManifold* m,
+		// double length);
+		load("manifold_refine_to_length", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
 				ValueLayout.JAVA_DOUBLE);
 
-		// ManifoldManifold* manifold_refine_to_tolerance(void* mem, ManifoldManifold* m, double tolerance);
-		load("manifold_refine_to_tolerance", ValueLayout.ADDRESS, ValueLayout.ADDRESS,  ValueLayout.ADDRESS,
+		// ManifoldManifold* manifold_refine_to_tolerance(void* mem, ManifoldManifold*
+		// m, double tolerance);
+		load("manifold_refine_to_tolerance", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
 				ValueLayout.JAVA_DOUBLE);
-		load("manifold_simplify", ValueLayout.ADDRESS, ValueLayout.ADDRESS,  ValueLayout.ADDRESS,
+		load("manifold_simplify", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
 				ValueLayout.JAVA_DOUBLE);
-		// ManifoldManifold* manifold_smooth_by_normals(void* mem, ManifoldManifold* m, int normal_idx);
+		// ManifoldManifold* manifold_smooth_by_normals(void* mem, ManifoldManifold* m,
+		// int normal_idx);
 		load("manifold_smooth_by_normals", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
 				ValueLayout.JAVA_INT);
 
@@ -263,12 +303,15 @@ public class ManifoldBindings {
 		load("manifold_trim_by_plane", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
 				ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE);
 
-		// ManifoldManifoldPair manifold_split_by_plane(void* mem_first, void* mem_second,
-		// ManifoldManifold* m, double normal_x, double normal_y, double normal_z, double offset);
+		// ManifoldManifoldPair manifold_split_by_plane(void* mem_first, void*
+		// mem_second,
+		// ManifoldManifold* m, double normal_x, double normal_y, double normal_z,
+		// double offset);
 		load("manifold_split_by_plane", PAIR_LAYOUT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
 				ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE);
 
-		// ManifoldPolygons* manifold_slice(void* mem, ManifoldManifold* m, double height);
+		// ManifoldPolygons* manifold_slice(void* mem, ManifoldManifold* m, double
+		// height);
 		load("manifold_slice", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_DOUBLE);
 
 		load("manifold_alloc_polygons", ValueLayout.ADDRESS);
@@ -276,7 +319,8 @@ public class ManifoldBindings {
 		load("manifold_polygons_length", ValueLayout.JAVA_LONG, ValueLayout.ADDRESS);
 		// size_t manifold_polygons_simple_length(ManifoldPolygons* ps, size_t idx);
 		load("manifold_polygons_simple_length", ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG);
-		// ManifoldVec2 manifold_polygons_get_point(ManifoldPolygons* ps, size_t simple_idx, size_t pt_idx);
+		// ManifoldVec2 manifold_polygons_get_point(ManifoldPolygons* ps, size_t
+		// simple_idx, size_t pt_idx);
 		load("manifold_polygons_get_point", MemoryLayout.structLayout(ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE),
 				ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG);
 
@@ -358,7 +402,8 @@ public class ManifoldBindings {
 		load("manifold_manifold_vec_size", ValueLayout.JAVA_LONG);
 		// size_t manifold_manifold_vec_length(ManifoldManifoldVec* ms);
 		load("manifold_manifold_vec_length", ValueLayout.JAVA_LONG, ValueLayout.ADDRESS);
-		// ManifoldManifold* manifold_manifold_vec_get(void* mem, ManifoldManifoldVec* ms, size_t idx);
+		// ManifoldManifold* manifold_manifold_vec_get(void* mem, ManifoldManifoldVec*
+		// ms, size_t idx);
 		load("manifold_manifold_vec_get", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG);
 
 		// ===== Mesh export (64-bit only) =====
@@ -417,7 +462,8 @@ public class ManifoldBindings {
 		// void manifold_delete_polygons(ManifoldPolygons* p);
 		loadVoid("manifold_delete_polygons", ValueLayout.ADDRESS);
 
-		// ManifoldManifold* manifold_hull_pts(void* mem, ManifoldVec3* pts, size_t count);
+		// ManifoldManifold* manifold_hull_pts(void* mem, ManifoldVec3* pts, size_t
+		// count);
 		load("manifold_hull_pts", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG);
 		// ===== Static Quality Globals =====
 
@@ -431,12 +477,43 @@ public class ManifoldBindings {
 		load("manifold_get_circular_segments", ValueLayout.JAVA_INT, ValueLayout.JAVA_DOUBLE);
 
 		// ManifoldManifold* manifold_smooth_out(void* mem, ManifoldManifold* m,
-		//	     double minSharpAngle, double minSmoothness);
+		// double minSharpAngle, double minSmoothness);
 		load("manifold_smooth_out", ValueLayout.ADDRESS, ValueLayout.ADDRESS, // void* mem
 				ValueLayout.ADDRESS, // ManifoldManifold* m
 				ValueLayout.JAVA_DOUBLE, // minSharpAngle
 				ValueLayout.JAVA_DOUBLE // minSmoothness
 		);
+		// ===== New CrossSection bindings to add in the constructor =====
+
+		// ManifoldCrossSection* manifold_alloc_cross_section();
+		load("manifold_alloc_cross_section", ValueLayout.ADDRESS);
+
+		// size_t manifold_cross_section_size();
+		load("manifold_cross_section_size", ValueLayout.JAVA_LONG);
+
+		// ManifoldCrossSection* manifold_cross_section_of_polygons(void* mem,
+		// ManifoldPolygons* ps, ManifoldFillRule fr);
+		load("manifold_cross_section_of_polygons", ValueLayout.ADDRESS, ValueLayout.ADDRESS, // void* mem
+				ValueLayout.ADDRESS, // ManifoldPolygons* ps
+				ValueLayout.JAVA_INT); // ManifoldFillRule fr
+
+		// ManifoldCrossSection* manifold_cross_section_offset(void* mem,
+		// ManifoldCrossSection* cs,
+//		     double delta, ManifoldJoinType jt, double miter_limit, int circular_segments);
+		load("manifold_cross_section_offset", ValueLayout.ADDRESS, ValueLayout.ADDRESS, // void* mem
+				ValueLayout.ADDRESS, // ManifoldCrossSection* cs
+				ValueLayout.JAVA_DOUBLE, // delta
+				ValueLayout.JAVA_INT, // ManifoldJoinType jt
+				ValueLayout.JAVA_DOUBLE, // miter_limit
+				ValueLayout.JAVA_INT); // circular_segments
+
+		// ManifoldPolygons* manifold_cross_section_to_polygons(void* mem,
+		// ManifoldCrossSection* cs);
+		load("manifold_cross_section_to_polygons", ValueLayout.ADDRESS, ValueLayout.ADDRESS, // void* mem
+				ValueLayout.ADDRESS); // ManifoldCrossSection* cs
+
+		// void manifold_delete_cross_section(ManifoldCrossSection* cs);
+		loadVoid("manifold_delete_cross_section", ValueLayout.ADDRESS);
 
 		System.out.println("Available Manifold functions: " + functions.keySet());
 	}
@@ -474,9 +551,10 @@ public class ManifoldBindings {
 	 * surfaces. A {@code minSharpAngle} of 30–60 degrees is a reasonable starting
 	 * point; increase it to dissolve more aggressive artifacts.
 	 *
-	 * @param m              the input manifold
-	 * @param minSharpAngle  edges sharper than this (degrees) are preserved
-	 * @param minSmoothness  smoothness at preserved edges [0.0 = sharp, 1.0 = smooth]
+	 * @param m             the input manifold
+	 * @param minSharpAngle edges sharper than this (degrees) are preserved
+	 * @param minSmoothness smoothness at preserved edges [0.0 = sharp, 1.0 =
+	 *                      smooth]
 	 */
 	public MemorySegment smoothOut(MemorySegment m, double minSharpAngle, double minSmoothness) throws Throwable {
 		MemorySegment mem = (MemorySegment) functions.get("manifold_alloc_manifold").invoke();
@@ -488,27 +566,27 @@ public class ManifoldBindings {
 	/**
 	 * Sets the global number of circular segments used when generating cylinders,
 	 * spheres, and other round primitives. Call this BEFORE creating primitives.
-	 * Higher values produce smoother geometry but more triangles.
-	 * A value of 0 resets to the angle/length defaults.
+	 * Higher values produce smoother geometry but more triangles. A value of 0
+	 * resets to the angle/length defaults.
 	 */
 	public void setCircularSegments(int segments) throws Throwable {
 		functions.get("manifold_set_circular_segments").invoke(segments);
 	}
 
 	/**
-	 * Sets the minimum angle (in degrees) between circular segments.
-	 * The actual segment count is the maximum implied by both this angle limit
-	 * and the edge-length limit. Smaller angles = more segments = smoother curves.
-	 * Default is ~1 degree.
+	 * Sets the minimum angle (in degrees) between circular segments. The actual
+	 * segment count is the maximum implied by both this angle limit and the
+	 * edge-length limit. Smaller angles = more segments = smoother curves. Default
+	 * is ~1 degree.
 	 */
 	public void setMinCircularAngle(double degrees) throws Throwable {
 		functions.get("manifold_set_min_circular_angle").invoke(degrees);
 	}
 
 	/**
-	 * Returns the number of circular segments that would be used for a circle
-	 * of the given radius, given the current quality settings.
-	 * Useful for debugging or verifying your quality settings before building geometry.
+	 * Returns the number of circular segments that would be used for a circle of
+	 * the given radius, given the current quality settings. Useful for debugging or
+	 * verifying your quality settings before building geometry.
 	 */
 	public int getCircularSegments(double radius) throws Throwable {
 		return (int) functions.get("manifold_get_circular_segments").invoke(radius);
@@ -521,6 +599,72 @@ public class ManifoldBindings {
 	}
 
 	// ===== Slice =====
+	/**
+	 * Slices the manifold at the given Z height and returns contours offset by
+	 * {@code delta} millimetres. Positive values expand outward (outset); negative
+	 * values shrink inward (inset).
+	 *
+	 * <p>
+	 * A delta of {@code 0.0} is equivalent to calling
+	 * {@link #slice(MemorySegment, double)} but routed through the CrossSection
+	 * pipeline (slightly more expensive). Prefer the plain {@code slice} overload
+	 * when no offset is needed.
+	 *
+	 * <p>
+	 * Inset caveat: contours narrower than {@code 2 * |delta|} will collapse and
+	 * disappear — that is geometrically correct behaviour.
+	 *
+	 * @param m            the input manifold
+	 * @param height       Z coordinate of the cutting plane
+	 * @param delta        offset distance in model units (positive = outset,
+	 *                     negative = inset)
+	 * @param joinType     corner style for offset joins
+	 * @param miterLimit   miter ratio cap — only used when {@code joinType} is
+	 *                     {@link JoinType#MITER}; pass {@code 2.0} otherwise
+	 * @param circularSegs arc resolution for rounded joins; {@code 0} uses the
+	 *                     global quality setting (see {@link #setCircularSegments})
+	 * @return list of offset contours; each contour is a {@code double[][2]} point
+	 *         array
+	 */
+	public ArrayList<double[][]> sliceWithOffset(MemorySegment m, double height, double delta, JoinType joinType,
+			double miterLimit, int circularSegs) throws Throwable {
+
+		MemorySegment slicePolys = null;
+		MemorySegment section = null;
+		MemorySegment offsetSec = null;
+		MemorySegment offsetPolys = null;
+
+		try (Arena arena = Arena.ofConfined()) {
+
+			// 1. Slice
+			MemorySegment sliceMem = (MemorySegment) functions.get("manifold_alloc_polygons").invoke();
+			slicePolys = (MemorySegment) functions.get("manifold_slice").invoke(sliceMem, m, height);
+
+			// 2. Polygons → CrossSection (positive fill rule handles concave shapes
+			// correctly)
+			MemorySegment csMem = (MemorySegment) functions.get("manifold_alloc_cross_section").invoke();
+			section = (MemorySegment) functions.get("manifold_cross_section_of_polygons").invoke(csMem, slicePolys,
+					FillRule.POSITIVE.toInt());
+
+			// 3. Offset
+			MemorySegment offsetMem = (MemorySegment) functions.get("manifold_alloc_cross_section").invoke();
+			offsetSec = (MemorySegment) functions.get("manifold_cross_section_offset").invoke(offsetMem, section, delta,
+					joinType.toInt(), miterLimit, circularSegs);
+
+			// 4. CrossSection → Polygons → Java
+			MemorySegment polyMem = (MemorySegment) functions.get("manifold_alloc_polygons").invoke();
+			offsetPolys = (MemorySegment) functions.get("manifold_cross_section_to_polygons").invoke(polyMem,
+					offsetSec);
+
+			return polygonsToJava(offsetPolys, arena);
+
+		} finally {
+			safeDeletePolygons(slicePolys);
+			safeDeleteCrossSection(section);
+			safeDeleteCrossSection(offsetSec);
+			safeDeletePolygons(offsetPolys);
+		}
+	}
 
 	public ArrayList<double[][]> slice(MemorySegment m, double height) throws Throwable {
 		MemorySegment polygons = null;
@@ -551,6 +695,42 @@ public class ManifoldBindings {
 				} catch (Throwable ignored) {
 				}
 			}
+		}
+	}
+
+	/** Reads a native ManifoldPolygons into a Java ArrayList of contours. */
+	private ArrayList<double[][]> polygonsToJava(MemorySegment polygons, Arena arena) throws Throwable {
+		long numContours = (long) functions.get("manifold_polygons_length").invoke(polygons);
+		ArrayList<double[][]> result = new ArrayList<>((int) numContours);
+		for (int c = 0; c < numContours; c++) {
+			long len = (long) functions.get("manifold_polygons_simple_length").invoke(polygons, (long) c);
+			double[][] contour = new double[(int) len][2];
+			for (int i = 0; i < len; i++) {
+				MemorySegment pt = (MemorySegment) functions.get("manifold_polygons_get_point").invoke(arena, polygons,
+						(long) c, (long) i);
+				contour[i][0] = pt.get(ValueLayout.JAVA_DOUBLE, 0); // x
+				contour[i][1] = pt.get(ValueLayout.JAVA_DOUBLE, 8); // y
+			}
+			result.add(contour);
+		}
+		return result;
+	}
+
+	private void safeDeleteCrossSection(MemorySegment cs) {
+		if (cs == null)
+			return;
+		try {
+			functions.get("manifold_delete_cross_section").invoke(cs);
+		} catch (Throwable ignored) {
+		}
+	}
+
+	private void safeDeletePolygons(MemorySegment p) {
+		if (p == null)
+			return;
+		try {
+			functions.get("manifold_delete_polygons").invoke(p);
+		} catch (Throwable ignored) {
 		}
 	}
 
@@ -635,6 +815,7 @@ public class ManifoldBindings {
 		MemorySegment mem = (MemorySegment) functions.get("manifold_alloc_manifold").invoke();
 		return (MemorySegment) functions.get("manifold_difference").invoke(mem, a, b);
 	}
+
 	public MemorySegment minkowski_difference(MemorySegment a, MemorySegment b) throws Throwable {
 		MemorySegment mem = (MemorySegment) functions.get("manifold_alloc_manifold").invoke();
 		return (MemorySegment) functions.get("manifold_minkowski_difference").invoke(mem, a, b);
@@ -735,10 +916,12 @@ public class ManifoldBindings {
 		MemorySegment mem = (MemorySegment) functions.get("manifold_alloc_manifold").invoke();
 		return (MemorySegment) functions.get("manifold_refine_to_tolerance").invoke(mem, m, tolerance);
 	}
+
 	public MemorySegment simplify(MemorySegment m, double tolerance) throws Throwable {
 		MemorySegment mem = (MemorySegment) functions.get("manifold_alloc_manifold").invoke();
 		return (MemorySegment) functions.get("manifold_simplify").invoke(mem, m, tolerance);
 	}
+
 	public MemorySegment smoothByNormals(MemorySegment m, int normalIdx) throws Throwable {
 		MemorySegment mem = (MemorySegment) functions.get("manifold_alloc_manifold").invoke();
 		return (MemorySegment) functions.get("manifold_smooth_by_normals").invoke(mem, m, normalIdx);
@@ -788,8 +971,8 @@ public class ManifoldBindings {
 	/**
 	 * Computes the convex hull of a set of points.
 	 *
-	 * Each point is supplied as a {@code double[3]} of {x, y, z}. If fewer than
-	 * 4 points are provided, or all points are coplanar, an empty manifold is
+	 * Each point is supplied as a {@code double[3]} of {x, y, z}. If fewer than 4
+	 * points are provided, or all points are coplanar, an empty manifold is
 	 * returned.
 	 */
 	public MemorySegment hull(ArrayList<double[]> points) throws Throwable {
@@ -1007,11 +1190,13 @@ public class ManifoldBindings {
 	// ===== Mesh import/export (64-bit) =====
 
 	/**
-	 * Imports a mesh from double-precision vertex and triangle arrays into a manifold.
+	 * Imports a mesh from double-precision vertex and triangle arrays into a
+	 * manifold.
 	 *
-	 * <p>Vertex positions are laid out as a flat {@code double[]} of length
-	 * {@code nVerts * 3} in XYZ order. Triangle indices are a flat {@code long[]} of
-	 * length {@code nTris * 3}. Duplicate vertices are welded automatically via
+	 * <p>
+	 * Vertex positions are laid out as a flat {@code double[]} of length
+	 * {@code nVerts * 3} in XYZ order. Triangle indices are a flat {@code long[]}
+	 * of length {@code nTris * 3}. Duplicate vertices are welded automatically via
 	 * {@code manifold_meshgl64_merge}.
 	 *
 	 * @param vertices  flat XYZ vertex array ({@code nVerts * 3} doubles)
@@ -1081,8 +1266,8 @@ public class ManifoldBindings {
 	 * Exports a manifold to double-precision vertex and triangle arrays.
 	 *
 	 * @param manifold a fully initialised manifold {@link MemorySegment}
-	 * @return a {@link MeshData64} record containing double vertex positions and long
-	 *         triangle indices
+	 * @return a {@link MeshData64} record containing double vertex positions and
+	 *         long triangle indices
 	 */
 	public MeshData64 exportMeshGL64(MemorySegment manifold) throws Throwable {
 		MemorySegment mem = (MemorySegment) functions.get("manifold_alloc_meshgl64").invoke();
@@ -1135,7 +1320,8 @@ public class ManifoldBindings {
 	 * Double-precision mesh data returned by {@link #exportMeshGL64(MemorySegment)}
 	 * and accepted by {@link #importMeshGL(double[], long[], long, long)}.
 	 *
-	 * <p>{@code vertices} is a flat XYZ array of length {@code vertCount * 3}.
+	 * <p>
+	 * {@code vertices} is a flat XYZ array of length {@code vertCount * 3}.
 	 * {@code triangles} is a flat index array of length {@code triCount * 3}.
 	 */
 	public record MeshData64(double[] vertices, long[] triangles, int vertCount, int triCount) {
@@ -1150,6 +1336,7 @@ public class ManifoldBindings {
 	 * files, backed by the 64-bit mesh pipeline throughout.
 	 *
 	 * <h2>Export (MemorySegment → File)</h2>
+	 * 
 	 * <pre>{@code
 	 * // STL — single mesh
 	 * bindings.exportSTL(manifoldSegment, new File("out.stl"));
@@ -1162,6 +1349,7 @@ public class ManifoldBindings {
 	 * }</pre>
 	 *
 	 * <h2>Import (File → MemorySegment)</h2>
+	 * 
 	 * <pre>{@code
 	 * MemorySegment manifold = bindings.importSTL(new File("model.stl"));
 	 * ArrayList<MemorySegment> meshes = bindings.import3MF(new File("assembly.3mf"));
@@ -1169,30 +1357,31 @@ public class ManifoldBindings {
 	 *
 	 * <h2>STL notes</h2>
 	 * <ul>
-	 *   <li>Reads both binary and ASCII STL.</li>
-	 *   <li>Writes binary STL.</li>
-	 *   <li>Duplicate vertices are welded inside {@link #importMeshGL}.</li>
-	 *   <li>Face normals on export are computed from vertex positions.</li>
+	 * <li>Reads both binary and ASCII STL.</li>
+	 * <li>Writes binary STL.</li>
+	 * <li>Duplicate vertices are welded inside {@link #importMeshGL}.</li>
+	 * <li>Face normals on export are computed from vertex positions.</li>
 	 * </ul>
 	 *
 	 * <h2>3MF notes</h2>
 	 * <ul>
-	 *   <li>Reads and writes 3MF Core Specification 1.x.</li>
-	 *   <li>Each {@code <object>} maps to exactly one {@link MemorySegment}.</li>
-	 *   <li>Indexed — vertex topology is fully preserved on round-trip.</li>
+	 * <li>Reads and writes 3MF Core Specification 1.x.</li>
+	 * <li>Each {@code <object>} maps to exactly one {@link MemorySegment}.</li>
+	 * <li>Indexed — vertex topology is fully preserved on round-trip.</li>
 	 * </ul>
 	 */
 
 	// =========================================================================
-	// Export API  (MemorySegment → File)
+	// Export API (MemorySegment → File)
 	// =========================================================================
 
 	/**
 	 * Exports the manifold to a binary STL file.
 	 *
-	 * <p>Vertex positions are written as {@code float} (single-precision) because
-	 * the STL binary format specifies 32-bit IEEE 754 floats. Sub-micron precision
-	 * is not preserved, but this matches universal STL toolchain expectations.
+	 * <p>
+	 * Vertex positions are written as {@code float} (single-precision) because the
+	 * STL binary format specifies 32-bit IEEE 754 floats. Sub-micron precision is
+	 * not preserved, but this matches universal STL toolchain expectations.
 	 */
 	public void exportSTL(MemorySegment manifold, File file) throws Throwable {
 		MeshData64 mesh = this.exportMeshGL64(manifold);
@@ -1202,8 +1391,9 @@ public class ManifoldBindings {
 	/**
 	 * Exports one or more manifolds to a single 3MF file.
 	 *
-	 * <p>Each {@link MemorySegment} becomes a separate {@code <object>} element and
-	 * a corresponding {@code <item>} in the {@code <build>} section.
+	 * <p>
+	 * Each {@link MemorySegment} becomes a separate {@code <object>} element and a
+	 * corresponding {@code <item>} in the {@code <build>} section.
 	 */
 	public void export3MF(ArrayList<MemorySegment> manifolds, File file) throws Throwable {
 		if (manifolds == null || manifolds.isEmpty())
@@ -1217,7 +1407,7 @@ public class ManifoldBindings {
 	}
 
 	// =========================================================================
-	// Import API  (File → MemorySegment)
+	// Import API (File → MemorySegment)
 	// =========================================================================
 
 	/**
@@ -1255,7 +1445,7 @@ public class ManifoldBindings {
 	}
 
 	// =========================================================================
-	// STL – binary read  (produces double[]/long[] directly)
+	// STL – binary read (produces double[]/long[] directly)
 	// =========================================================================
 
 	private static RawMesh readBinarySTL(File file) throws IOException {
@@ -1292,7 +1482,7 @@ public class ManifoldBindings {
 	}
 
 	// =========================================================================
-	// STL – ASCII read  (produces double[]/long[] directly)
+	// STL – ASCII read (produces double[]/long[] directly)
 	// =========================================================================
 
 	private static RawMesh readAsciiSTL(File file) throws IOException {
@@ -1343,7 +1533,7 @@ public class ManifoldBindings {
 	}
 
 	// =========================================================================
-	// STL – binary write  (accepts double[]/long[])
+	// STL – binary write (accepts double[]/long[])
 	// =========================================================================
 
 	private static void writeBinarySTL(double[] verts, long[] tris, int vertCount, int triCount, File file)
@@ -1419,9 +1609,9 @@ public class ManifoldBindings {
 	}
 
 	/**
-	 * Hand-rolled XML pull parser for the 3MF model document.
-	 * Returns one {@link RawMesh} per {@code <object>} element.
-	 * Triangle indices within each object are local (start at 0).
+	 * Hand-rolled XML pull parser for the 3MF model document. Returns one
+	 * {@link RawMesh} per {@code <object>} element. Triangle indices within each
+	 * object are local (start at 0).
 	 */
 	private static List<RawMesh> parseModelXml(String xml) {
 		List<RawMesh> result = new ArrayList<>();
@@ -1546,7 +1736,7 @@ public class ManifoldBindings {
 					+ " xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n" + "  <Relationship"
 					+ " Type=\"http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel\""
 					+ " Target=\"/3D/3dmodel.model\" Id=\"rel0\"/>\n" + "</Relationships>\n")
-							.getBytes(StandardCharsets.UTF_8));
+					.getBytes(StandardCharsets.UTF_8));
 
 			putZipEntry(zos, "3D/3dmodel.model", modelBytes);
 		}
