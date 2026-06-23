@@ -528,6 +528,7 @@ size_t manifold_execution_context_size();
 // allocation
 
 ManifoldManifold* manifold_alloc_manifold();
+ManifoldManifoldVec* manifold_alloc_manifold_vec_java();
 ManifoldManifoldVec* manifold_alloc_manifold_vec();
 ManifoldCrossSection* manifold_alloc_cross_section();
 ManifoldCrossSectionVec* manifold_alloc_cross_section_vec();

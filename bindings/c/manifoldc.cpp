@@ -1024,6 +1024,10 @@ size_t manifold_execution_context_size() { return sizeof(ExecutionContext); }
 ManifoldManifold* manifold_alloc_manifold() {
   return to_c(alloc_raw<manifold::Manifold>());
 }
+ManifoldManifoldVec* manifold_alloc_manifold_vec_java() {
+  void* mem = ::operator new(sizeof(std::vector<manifold::Manifold>));
+  return to_c(new (mem) std::vector<manifold::Manifold>());
+}
 ManifoldManifoldVec* manifold_alloc_manifold_vec() {
   return to_c(alloc_raw<std::vector<manifold::Manifold>>());
 }

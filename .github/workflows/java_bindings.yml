@@ -201,38 +201,7 @@ jobs:
         jdkFile: ./zulu25.32.21-ca-fx-jdk25.0.2-linux_x64.tar.gz
     - name: Build With parallelization
       run: |
-        git clone https://github.com/AngusJohnson/Clipper2.git clipper2
-        git clone https://github.com/wjakob/nanobind.git nanobind
-        mkdir build
-        cd build
-        cmake \
-          -DMANIFOLD_CROSS_SECTION=ON \
-          -DMANIFOLD_USE_BUILTIN_CLIPPER2=ON \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DASSIMP_ENABLE=OFF \
-          -DBUILD_SHARED_LIBS=ON \
-          -DMANIFOLD_DEBUG=OFF \
-          -DMANIFOLD_ASSERT=OFF \
-          -DMANIFOLD_TEST=OFF \
-          -DMANIFOLD_EXTRAS=OFF \
-          -DMANIFOLD_EXPORT=OFF \
-          -DMANIFOLD_PAR=ON \
-          -DMANIFOLD_USE_BUILTIN_TBB=ON \
-          -DFETCHCONTENT_SOURCE_DIR_CLIPPER2=../clipper2 \
-          -DFETCHCONTENT_SOURCE_DIR_NANOBIND=../nanobind \
-          -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
-          -DCMAKE_BUILD_RPATH='$ORIGIN' ..
-        make
-        cd ..
-        mkdir -p ./bindings/java/src/main/resources/manifold3d/natives/linux-x86_64/
-        cp ./build/src/libmanifold.so ./bindings/java/src/main/resources/manifold3d/natives/linux-x86_64/
-        ln -sf libmanifold.so ./bindings/java/src/main/resources/manifold3d/natives/linux-x86_64/libmanifold.so.3
-        ln -sf libmanifold.so.3 ./bindings/java/src/main/resources/manifold3d/natives/linux-x86_64/libmanifold.so.3.5.1
-        cp ./build/bindings/c/libmanifoldc.so ./bindings/java/src/main/resources/manifold3d/natives/linux-x86_64/
-        ln -sf libmanifoldc.so ./bindings/java/src/main/resources/manifold3d/natives/linux-x86_64/libmanifoldc.so.3
-        ln -sf libmanifoldc.so.3 ./bindings/java/src/main/resources/manifold3d/natives/linux-x86_64/libmanifoldc.so.3.5.1
-        cd bindings/java/
-        mvn test --file pom.xml --no-transfer-progress
+        bash bindings/java/scripts/linux/buildC.sh 
     - name: Upload native libraries
       uses: actions/upload-artifact@v4
       with:

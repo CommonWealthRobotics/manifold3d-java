@@ -162,7 +162,7 @@ public class ManifoldBindings {
 		load("manifold_alloc_meshgl64", ValueLayout.ADDRESS);
 
 		// ManifoldManifoldVec* manifold_alloc_manifold_vec();
-		load("manifold_alloc_manifold_vec", ValueLayout.ADDRESS);
+		load("manifold_alloc_manifold_vec_java", ValueLayout.ADDRESS);
 
 		// ManifoldBox* manifold_alloc_box();
 		load("manifold_alloc_box", ValueLayout.ADDRESS);
@@ -837,7 +837,7 @@ public class ManifoldBindings {
 	}
 
 	public MemorySegment batchUnion(MemorySegment[] shapes) throws Throwable {
-		MemorySegment vec = (MemorySegment) functions.get("manifold_alloc_manifold_vec").invoke();
+		MemorySegment vec = (MemorySegment) functions.get("manifold_alloc_manifold_vec_java").invoke();
 		try {
 			for (MemorySegment shape : shapes)
 				functions.get("manifold_manifold_vec_push_back").invoke(vec, shape);
@@ -1005,7 +1005,7 @@ public class ManifoldBindings {
 	}
 
 	public MemorySegment batchHull(MemorySegment[] shapes) throws Throwable {
-		MemorySegment vec = (MemorySegment) functions.get("manifold_alloc_manifold_vec").invoke();
+		MemorySegment vec = (MemorySegment) functions.get("manifold_alloc_manifold_vec_java").invoke();
 		try {
 			for (MemorySegment shape : shapes)
 				functions.get("manifold_manifold_vec_push_back").invoke(vec, shape);
@@ -1014,10 +1014,9 @@ public class ManifoldBindings {
 			return (MemorySegment) functions.get("manifold_batch_hull").invoke(mem, vec);
 		} finally {
 			if (vec != null) {
-				try {
-					functions.get("manifold_delete_manifold_vec").invoke(vec);
-				} catch (Throwable ignored) {
-				}
+				
+				functions.get("manifold_delete_manifold_vec").invoke(vec);
+	
 			}
 		}
 	}
@@ -1025,7 +1024,7 @@ public class ManifoldBindings {
 	// ===== Compose/Decompose =====
 
 	public MemorySegment compose(MemorySegment[] parts) throws Throwable {
-		MemorySegment vec = (MemorySegment) functions.get("manifold_alloc_manifold_vec").invoke();
+		MemorySegment vec = (MemorySegment) functions.get("manifold_alloc_manifold_vec_java").invoke();
 		try {
 			for (MemorySegment part : parts)
 				functions.get("manifold_manifold_vec_push_back").invoke(vec, part);
