@@ -139,3 +139,5 @@ extras/ember_tests/testfiles/raw_meshes
 #Eclipse project files
 /.project
 /.cproject
+clipper2
+nanobind
