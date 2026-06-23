@@ -140,7 +140,23 @@ jobs:
         git clone https://github.com/wjakob/nanobind.git nanobind
         mkdir build
         cd build
-        cmake           -DMANIFOLD_CROSS_SECTION=ON           -DMANIFOLD_USE_BUILTIN_CLIPPER2=ON           -DCMAKE_BUILD_TYPE=Release           -DASSIMP_ENABLE=ON           -DBUILD_SHARED_LIBS=ON           -DMANIFOLD_DEBUG=ON           -DMANIFOLD_EXPORT=ON           -DMANIFOLD_PAR=ON           -DMANIFOLD_USE_BUILTIN_TBB=ON           -DFETCHCONTENT_SOURCE_DIR_CLIPPER2=../clipper2           -DFETCHCONTENT_SOURCE_DIR_NANOBIND=../nanobind           -DCMAKE_POLICY_VERSION_MINIMUM=3.5           -DCMAKE_BUILD_RPATH='$ORIGIN' ..
+        cmake \
+          -DMANIFOLD_CROSS_SECTION=ON \
+          -DMANIFOLD_USE_BUILTIN_CLIPPER2=ON \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DASSIMP_ENABLE=ON \
+          -DBUILD_SHARED_LIBS=ON \
+          -DMANIFOLD_DEBUG=OFF \
+          -DMANIFOLD_ASSERT=OFF \
+          -DMANIFOLD_TEST=OFF \
+          -DMANIFOLD_EXTRAS=OFF \
+          -DMANIFOLD_EXPORT=OFF \
+          -DMANIFOLD_PAR=ON \
+          -DMANIFOLD_USE_BUILTIN_TBB=ON \
+          -DFETCHCONTENT_SOURCE_DIR_CLIPPER2=../clipper2 \
+          -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+          -DCMAKE_BUILD_RPATH='$ORIGIN' \
+          ..
         make
         cd ..
         mkdir -p ./bindings/java/src/main/resources/manifold3d/natives/linux-arm64/
@@ -189,7 +205,22 @@ jobs:
         git clone https://github.com/wjakob/nanobind.git nanobind
         mkdir build
         cd build
-        cmake           -DMANIFOLD_CROSS_SECTION=ON           -DMANIFOLD_USE_BUILTIN_CLIPPER2=ON           -DCMAKE_BUILD_TYPE=Release           -DASSIMP_ENABLE=OFF           -DBUILD_SHARED_LIBS=ON           -DMANIFOLD_DEBUG=OFF           -DMANIFOLD_TEST=OFF           -DMANIFOLD_EXTRAS=OFF           -DMANIFOLD_EXPORT=OFF           -DMANIFOLD_PAR=ON           -DMANIFOLD_USE_BUILTIN_TBB=ON           -DFETCHCONTENT_SOURCE_DIR_CLIPPER2=../clipper2           -DFETCHCONTENT_SOURCE_DIR_NANOBIND=../nanobind           -DCMAKE_POLICY_VERSION_MINIMUM=3.5           -DCMAKE_BUILD_RPATH='$ORIGIN' ..
+        cmake \
+          -DMANIFOLD_CROSS_SECTION=ON \
+          -DMANIFOLD_USE_BUILTIN_CLIPPER2=ON \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DASSIMP_ENABLE=OFF \
+          -DBUILD_SHARED_LIBS=ON \
+          -DMANIFOLD_DEBUG=OFF \
+          -DMANIFOLD_ASSERT=OFF \
+          -DMANIFOLD_TEST=OFF \
+          -DMANIFOLD_EXTRAS=OFF \
+          -DMANIFOLD_EXPORT=OFF \
+          -DMANIFOLD_PAR=ON \
+          -DMANIFOLD_USE_BUILTIN_TBB=ON \
+          -DFETCHCONTENT_SOURCE_DIR_CLIPPER2=../clipper2 \
+          -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+          -DCMAKE_BUILD_RPATH='$ORIGIN' ..
         make
         cd ..
         mkdir -p ./bindings/java/src/main/resources/manifold3d/natives/linux-x86_64/
@@ -267,8 +298,10 @@ jobs:
           -A x64 -B build
 
         cmake --build build --target ALL_BUILD --config Release
+        cd ..
         mkdir -p bindings\java\src\main\resources\manifold3d\natives\win-x86_64\
         echo "List files"
+        Get-ChildItem -Path . -Recurse -Filter *.dll | Select-Object -ExpandProperty FullName
         echo "Copy existing files..."
         cp build\lib\Release\manifold.dll bindings\java\src\main\resources\manifold3d\natives\win-x86_64\manifold.dll
         cp build\lib\Release\manifoldc.dll bindings\java\src\main\resources\manifold3d\natives\win-x86_64\manifoldc.dll
