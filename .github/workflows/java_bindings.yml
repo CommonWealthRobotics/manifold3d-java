@@ -299,13 +299,11 @@ jobs:
 
         cmake --build build --target ALL_BUILD --config Release
         cd ..
-        mkdir -p bindings\java\src\main\resources\manifold3d\natives\win-x86_64\
-        echo "List files"
-        Get-ChildItem -Path . -Recurse -Filter *.dll | Select-Object -ExpandProperty FullName
-        echo "Copy existing files..."
-        cp build\lib\Release\manifold.dll bindings\java\src\main\resources\manifold3d\natives\win-x86_64\manifold.dll
-        cp build\lib\Release\manifoldc.dll bindings\java\src\main\resources\manifold3d\natives\win-x86_64\manifoldc.dll
-        cd bindings\java
+        mkdir -p bindings/java/src/main/resources/manifold3d/natives/win-x86_64
+        cp build/lib/Release/manifold.dll \
+           bindings/java/src/main/resources/manifold3d/natives/win-x86_64/
+        cp build/lib/Release/manifoldc.dll \
+           bindings/java/src/main/resources/manifold3d/natives/win-x86_64/
         mvn test --file pom.xml --no-transfer-progress
         cd ..
         cd ..
