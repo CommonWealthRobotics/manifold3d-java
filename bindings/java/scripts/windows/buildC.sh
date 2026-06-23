@@ -14,10 +14,10 @@ cmake . \
   -DMANIFOLD_CROSS_SECTION=ON \
   -DMANIFOLD_EXPORT=OFF \
   -DMANIFOLD_PAR=ON \
-  -DFETCHCONTENT_SOURCE_DIR_TBB=../tbb \
-  -DFETCHCONTENT_SOURCE_DIR_CLIPPER2=../clipper2 \
-  -DFETCHCONTENT_SOURCE_DIR_NANOBIND=../nanobind \
-  -DFETCHCONTENT_SOURCE_DIR_GOOGLETEST=../gtest \
+  -DFETCHCONTENT_SOURCE_DIR_TBB=tbb \
+  -DFETCHCONTENT_SOURCE_DIR_CLIPPER2=clipper2 \
+  -DFETCHCONTENT_SOURCE_DIR_NANOBIND=nanobind \
+  -DFETCHCONTENT_SOURCE_DIR_GOOGLETEST=gtest \
   -A x64 -B build
 cmake --build build --target ALL_BUILD --config Release
 mkdir -p ./bindings/java/src/main/resources/manifold3d/natives/win-x86_64/
