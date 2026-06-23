@@ -46,14 +46,18 @@ jobs:
       run: |
         mkdir build
         cd build
-        cmake -DCMAKE_OSX_ARCHITECTURES=x86_64 -DMANIFOLD_CROSS_SECTION=ON -DMANIFOLD_USE_BUILTIN_CLIPPER2=ON -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DMANIFOLD_STRICT=ON -DMANIFOLD_USE_BUILTIN_TBB=ON -DMANIFOLD_DEBUG=ON -DMANIFOLD_ASSERT=ON -DMANIFOLD_PYBIND=OFF -DMANIFOLD_PAR=ON -DCMAKE_OSX_ARCHITECTURES=x86_64 .. && make
+        cmake -DCMAKE_OSX_ARCHITECTURES=x86_64 -DMANIFOLD_CROSS_SECTION=ON -DMANIFOLD_USE_BUILTIN_CLIPPER2=ON -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DMANIFOLD_STRICT=ON -DMANIFOLD_USE_BUILTIN_TBB=ON -DMANIFOLD_DEBUG=ON -DMANIFOLD_ASSERT=ON -DMANIFOLD_PYBIND=OFF -DMANIFOLD_PAR=ON -DCMAKE_OSX_ARCHITECTURES=x86_64 -DCMAKE_BUILD_RPATH='@loader_path' .. && make
         cd ..
         mkdir -p ./bindings/java/src/main/resources/manifold3d/natives/mac-x86_64/
         ls -al ./build/src/
         echo "Extras Directory: "
         ls -al ./build/extras/
         cp ./build/src/libmanifold.dylib ./bindings/java/src/main/resources/manifold3d/natives/mac-x86_64/
+        ln -sf libmanifold.dylib ./bindings/java/src/main/resources/manifold3d/natives/mac-x86_64/libmanifold.3.dylib
+        ln -sf libmanifold.3.dylib ./bindings/java/src/main/resources/manifold3d/natives/mac-x86_64/libmanifold.3.5.1.dylib
         cp ./build/bindings/c/libmanifoldc.dylib ./bindings/java/src/main/resources/manifold3d/natives/mac-x86_64/
+        ln -sf libmanifoldc.dylib ./bindings/java/src/main/resources/manifold3d/natives/mac-x86_64/libmanifoldc.3.dylib
+        ln -sf libmanifoldc.3.dylib ./bindings/java/src/main/resources/manifold3d/natives/mac-x86_64/libmanifoldc.3.5.1.dylib
         cd bindings/java/
         mvn test --file pom.xml --no-transfer-progress
     - name: Upload native libraries
@@ -84,14 +88,18 @@ jobs:
       run: |
         mkdir build
         cd build
-        cmake  -DMANIFOLD_CROSS_SECTION=ON -DMANIFOLD_USE_BUILTIN_CLIPPER2=ON -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DMANIFOLD_STRICT=ON -DMANIFOLD_USE_BUILTIN_TBB=ON -DMANIFOLD_DEBUG=ON -DMANIFOLD_ASSERT=ON -DMANIFOLD_PYBIND=OFF -DMANIFOLD_PAR=ON .. && make
+        cmake  -DMANIFOLD_CROSS_SECTION=ON -DMANIFOLD_USE_BUILTIN_CLIPPER2=ON -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DMANIFOLD_STRICT=ON -DMANIFOLD_USE_BUILTIN_TBB=ON -DMANIFOLD_DEBUG=ON -DMANIFOLD_ASSERT=ON -DMANIFOLD_PYBIND=OFF -DMANIFOLD_PAR=ON -DCMAKE_BUILD_RPATH='@loader_path' .. && make
         cd ..
         mkdir -p ./bindings/java/src/main/resources/manifold3d/natives/mac-arm64/
         ls -al ./build/src/
         echo "Extras Directory: "
         ls -al ./build/extras/
         cp ./build/src/libmanifold.dylib ./bindings/java/src/main/resources/manifold3d/natives/mac-arm64/
+        ln -sf libmanifold.dylib ./bindings/java/src/main/resources/manifold3d/natives/mac-arm64/libmanifold.3.dylib
+        ln -sf libmanifold.3.dylib ./bindings/java/src/main/resources/manifold3d/natives/mac-arm64/libmanifold.3.5.1.dylib
         cp ./build/bindings/c/libmanifoldc.dylib ./bindings/java/src/main/resources/manifold3d/natives/mac-arm64/
+        ln -sf libmanifoldc.dylib ./bindings/java/src/main/resources/manifold3d/natives/mac-arm64/libmanifoldc.3.dylib
+        ln -sf libmanifoldc.3.dylib ./bindings/java/src/main/resources/manifold3d/natives/mac-arm64/libmanifoldc.3.5.1.dylib
         cd bindings/java/
         mvn test --file pom.xml --no-transfer-progress
     - name: Upload native libraries
@@ -118,18 +126,6 @@ jobs:
       with:
         packages: libgtest-dev libassimp-dev git libtbb-dev pkg-config libpython3-dev
     - run: pip install -U trimesh pytest
-    - &clone-clipper2-arm
-      uses: ./.github/actions/git-clone
-      with:
-        name: clipper2
-        url: https://github.com/AngusJohnson/Clipper2.git
-        rev: 46f639177fe418f9689e8ddb74f08a870c71f5b4
-    - &clone-nanobind-arm
-      uses: ./.github/actions/git-clone
-      with:
-        name: nanobind
-        url: https://github.com/wjakob/nanobind.git
-        tag: v2.12.0
     - name: Pull a JavaFX JDK
       run: wget https://cdn.azul.com/zulu/bin/zulu25.32.21-ca-fx-jdk25.0.2-linux_aarch64.tar.gz
 
@@ -140,14 +136,7 @@ jobs:
         jdkFile: ./zulu25.32.21-ca-fx-jdk25.0.2-linux_aarch64.tar.gz
     - name: Build With parallelization
       run: |
-        mkdir build
-        cd build
-        cmake -DMANIFOLD_CROSS_SECTION=ON -DCMAKE_BUILD_TYPE=Release -DASSIMP_ENABLE=ON -DBUILD_SHARED_LIBS=ON -DMANIFOLD_DEBUG=ON -DMANIFOLD_EXPORT=ON -DMANIFOLD_PAR=ON -DMANIFOLD_USE_BUILTIN_TBB=ON -DFETCHCONTENT_SOURCE_DIR_CLIPPER2=../clipper2 -DFETCHCONTENT_SOURCE_DIR_NANOBIND=../nanobind ..
-        make
-        cd ..
-        mkdir -p ./bindings/java/src/main/resources/manifold3d/natives/linux-arm64/
-        cp ./build/src/libmanifold.so ./bindings/java/src/main/resources/manifold3d/natives/linux-arm64/
-        cp ./build/bindings/c/libmanifoldc.so ./bindings/java/src/main/resources/manifold3d/natives/linux-arm64/
+        bash bindings/java/scripts/linux/buildC-arm.sh
         cd bindings/java/
         mvn test --file pom.xml --no-transfer-progress
     - name: Upload native libraries
@@ -174,18 +163,6 @@ jobs:
       with:
         packages: libgtest-dev libtbb-dev pkg-config libpython3-dev
     - run: pip install -U trimesh pytest
-    - &clone-clipper2-x86
-      uses: ./.github/actions/git-clone
-      with:
-        name: clipper2
-        url: https://github.com/AngusJohnson/Clipper2.git
-        rev: 46f639177fe418f9689e8ddb74f08a870c71f5b4
-    - &clone-nanobind-x86
-      uses: ./.github/actions/git-clone
-      with:
-        name: nanobind
-        url: https://github.com/wjakob/nanobind.git
-        tag: v2.12.0
     - name: Pull a JavaFX JDK
       run: wget https://cdn.azul.com/zulu/bin/zulu25.32.21-ca-fx-jdk25.0.2-linux_x64.tar.gz
     - name: Set Java
@@ -195,14 +172,7 @@ jobs:
         jdkFile: ./zulu25.32.21-ca-fx-jdk25.0.2-linux_x64.tar.gz
     - name: Build With parallelization
       run: |
-        mkdir build
-        cd build
-        cmake -DMANIFOLD_CROSS_SECTION=ON -DMANIFOLD_USE_BUILTIN_CLIPPER2=ON -DCMAKE_BUILD_TYPE=Release -DASSIMP_ENABLE=OFF -DBUILD_SHARED_LIBS=ON -DMANIFOLD_DEBUG=OFF -DMANIFOLD_TEST=OFF -DMANIFOLD_EXTRAS=OFF -DMANIFOLD_EXPORT=OFF -DMANIFOLD_PAR=ON -DMANIFOLD_USE_BUILTIN_TBB=ON ..
-        make
-        cd ..
-        mkdir -p ./bindings/java/src/main/resources/manifold3d/natives/linux-x86_64/
-        cp ./build/src/libmanifold.so ./bindings/java/src/main/resources/manifold3d/natives/linux-x86_64/
-        cp ./build/bindings/c/libmanifoldc.so ./bindings/java/src/main/resources/manifold3d/natives/linux-x86_64/
+        bash bindings/java/scripts/linux/buildC.sh
         cd bindings/java/
         mvn test --file pom.xml --no-transfer-progress
     - name: Upload native libraries
