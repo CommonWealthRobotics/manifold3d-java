@@ -4,7 +4,7 @@
 #rm -rf build
 mkdir build
 
-cmake \
+cmake . \
   -DCMAKE_BUILD_TYPE=Release \
   -DBUILD_SHARED_LIBS=ON \
   -DMANIFOLD_STRICT=ON \
@@ -18,9 +18,8 @@ cmake \
   -DFETCHCONTENT_SOURCE_DIR_CLIPPER2=../clipper2 \
   -DFETCHCONTENT_SOURCE_DIR_NANOBIND=../nanobind \
   -DFETCHCONTENT_SOURCE_DIR_GOOGLETEST=../gtest \
-  -A x64 -B .
+  -A x64 -B build
 cmake --build build --target ALL_BUILD --config Release
-
 mkdir -p ./bindings/java/src/main/resources/manifold3d/natives/win-x86_64/
 rm -rf ./bindings/java/src/main/resources/manifold3d/natives/win-x86_64/*
 cp ./build/lib/Release/manifold.dll ./bindings/java/src/main/resources/manifold3d/natives/win-x86_64/
