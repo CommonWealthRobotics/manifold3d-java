@@ -146,15 +146,10 @@ jobs:
           gcc make
     - uses: actions/checkout@v6
     - uses: lukka/get-cmake@v4.2.3
-    - uses: actions/setup-python@v5
-      with:
-        python-version: '3.12'
-        cache: 'pip'
     - name: Install dependencies
       uses: awalsh128/cache-apt-pkgs-action@v1.6.0
       with:
-        packages: libgtest-dev libtbb-dev pkg-config libpython3-dev
-    - run: pip install -U trimesh pytest
+        packages: libgtest-dev libtbb-dev pkg-config 
     - name: Pull a JavaFX JDK
       run: wget https://cdn.azul.com/zulu/bin/zulu25.32.21-ca-fx-jdk25.0.2-linux_x64.tar.gz
     - name: Set Java
