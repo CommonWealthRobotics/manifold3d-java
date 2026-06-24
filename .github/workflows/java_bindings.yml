@@ -124,7 +124,7 @@ jobs:
     timeout-minutes: 45
     runs-on: ubuntu-24.04
     container:
-      image: ubuntu:22.04
+      image: ubuntu:20.04
       options: --user root
     env:
       CC: gcc
