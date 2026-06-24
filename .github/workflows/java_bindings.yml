@@ -131,15 +131,20 @@ jobs:
       CXX: g++
     steps:
     - name: Install build deps
-      run: |
-        apt-get update
-        DEBIAN_FRONTEND=noninteractive apt-get install -y \
-          unzip \
-          curl \
-          wget \
-          ca-certificates \
-          openjdk-11-jdk \
-          gcc make
+          run: |
+            apt-get update
+            DEBIAN_FRONTEND=noninteractive apt-get install -y \
+              unzip \
+              curl \
+              wget \
+              ca-certificates \
+              lsb-release \
+              gnupg \
+              git \
+              file \
+              xz-utils \
+              openjdk-11-jdk \
+              gcc make
     - uses: actions/checkout@v6
     - uses: lukka/get-cmake@v4.2.3
     - uses: actions/setup-python@v5
