@@ -195,7 +195,8 @@ bool Manifold::Impl::IsSelfIntersecting() const {
  */
 bool Manifold::Impl::MatchesTriNormals() const {
   if (halfedge_.size() == 0 || faceNormal_.size() != NumTri()) return true;
-  return all_of(countAt(0_uz), countAt(NumTri()), [this](size_t face) {
+  const double tol = 1000 * epsilon_;
+  return all_of(countAt(0_uz), countAt(NumTri()), [&](size_t face) {
     if (halfedge_.Pair(3 * face) < 0) return true;
 
     const mat2x3 projection = GetAxisAlignedProjection(faceNormal_[face]);
@@ -210,28 +211,62 @@ bool Manifold::Impl::MatchesTriNormals() const {
       max = std::max(max, d);
       min = std::min(min, d);
     }
-    if (max - min > 2 * tolerance_) return false;
+    if (max - min > tol) return false;
 
-    const int ccw = CCW(v[0], v[1], v[2], epsilon_ * 2);
+    const int ccw = CCW(v[0], v[1], v[2], tol);
     return ccw >= 0;
   });
 }
 
 /**
- * Returns the number of triangles that are colinear within tolerance_.
+ * Returns the number of triangles that are colinear.
  */
 int Manifold::Impl::NumDegenerateTris() const {
-  if (halfedge_.size() == 0 || faceNormal_.size() != NumTri()) return true;
+  if (halfedge_.size() == 0 || faceNormal_.size() != NumTri()) return 0;
   return count_if(countAt(0_uz), countAt(NumTri()), [this](size_t face) {
-    if (halfedge_.Pair(3 * face) < 0) return true;
+    if (halfedge_.Pair(3 * face) < 0) return false;
 
     const mat2x3 projection = GetAxisAlignedProjection(faceNormal_[face]);
     vec2 v[3];
     for (int i : {0, 1, 2})
       v[i] = projection * vertPos_[halfedge_.Start(3 * face + i)];
 
-    const int ccw = CCW(v[0], v[1], v[2], tolerance_ / 2);
+    const int ccw = CCW(v[0], v[1], v[2], epsilon_ / 2);
+    // if (ccw == 0) {
+    //   std::cout << "degenerate tri: " << face << ", e: " << face * 3 << ", "
+    //             << faceNormal_[face] << ", "
+    //             << vertPos_[halfedge_.Start(3 * face + 0)] << ", "
+    //             << vertPos_[halfedge_.Start(3 * face + 1)] << ", "
+    //             << vertPos_[halfedge_.Start(3 * face + 2)] << std::endl;
+    // }
     return ccw == 0;
+  });
+}
+
+/**
+ * Returns true if properties are shared everywhere except across mesh
+ * boundaries. This is not true in general, but only because an input mesh may
+ * have property discontinuities. For simple input meshes where properties are
+ * 1:1 with verts, this HasSimpleProps condition should still be true after any
+ * combination of boolean operations and simplifications. CalculateNormals()
+ * will cause this to be false anytime the mesh contains a sharp edge.
+ */
+bool Manifold::Impl::HasSimpleProps() const {
+  if (halfedge_.size() == 0 || NumProp() == 0) return true;
+  return all_of(countAt(0_uz), countAt(halfedge_.size()), [this](size_t edge) {
+    const int pair = halfedge_.Pair(edge);
+    if (pair < 0 || !halfedge_.IsForward(edge)) return true;
+
+    const bool propsMatch = halfedge_.Prop(edge) == halfedge_.PropEnd(pair) &&
+                            halfedge_.Prop(pair) == halfedge_.PropEnd(edge);
+    const bool meshesMatch = meshRelation_.triRef[halfedge_.Tri(edge)].meshID ==
+                             meshRelation_.triRef[halfedge_.Tri(pair)].meshID;
+    // if (meshesMatch != propsMatch) {
+    //   std::cout << "edge: " << edge << ", pair: " << pair
+    //             << ", meshesMatch: " << meshesMatch
+    //             << ", propsMatch: " << propsMatch << std::endl;
+    // }
+    return meshesMatch == propsMatch;
   });
 }
 
@@ -326,9 +361,8 @@ void Manifold::Impl::CalculateCurvature(int gaussianIdx, int meanIdx) {
       const int vert = halfedge_.Start(edge);
       const int propVert = halfedge_.Prop(edge);
 
-      auto old = std::atomic_exchange(
-          reinterpret_cast<std::atomic<uint8_t>*>(&counters[propVert]),
-          static_cast<uint8_t>(1));
+      auto old = AtomicRef<uint8_t>(counters[propVert])
+                     .exchange(static_cast<uint8_t>(1));
       if (old == 1) continue;
 
       for (int p = 0; p < oldNumProp; ++p) {
@@ -371,6 +405,7 @@ void Manifold::Impl::CalculateBBox() {
     // Decimated out of existence - early out.
     MakeEmpty(Error::NoError);
   }
+  epsilon_ = Quality::GetRelativePrecision() * bBox_.Scale();
 }
 
 /**

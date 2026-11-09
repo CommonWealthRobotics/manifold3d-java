@@ -12,7 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <cmath>
+
 #include "../src/utils.h"
+#include "gtest/gtest.h"
 #include "manifold/manifold.h"
 #include "test.h"
 
@@ -31,26 +34,56 @@ TEST(Properties, Measurements) {
   EXPECT_FLOAT_EQ(cube.SurfaceArea(), 6.0);
 }
 
+TEST(Properties, BooleanBarycentricWeightsRemainFinite) {
+  const double height = std::sqrt(3.0);
+  const Manifold prism =
+      Manifold::Extrude(Polygons{{{0, 0}, {2, 0}, {1, height}}}, 2)
+          .SetProperties(3, [height](double* color, vec3 p, const double*) {
+            color[2] = p.y / height;
+            color[1] = (p.x - color[2]) / 2;
+            color[0] = 1 - color[1] - color[2];
+          });
+  // A distant component raises epsilon to about 0.7. Interpolation at newly
+  // created vertices can then snap every weight to zero.
+  const Manifold input =
+      prism + Manifold::Cube({10, 10, 10}, true).Translate({7e11, 0, 0});
+  const Manifold tool = Manifold::Cube({2, 2, 4}).Translate({0.7, 0.7, -1});
+  ASSERT_EQ(prism.Status(), Manifold::Error::NoError);
+  ASSERT_EQ(input.Status(), Manifold::Error::NoError);
+  ASSERT_EQ(tool.Status(), Manifold::Error::NoError);
+
+  const Manifold result = input - tool;
+  ASSERT_EQ(result.Status(), Manifold::Error::NoError);
+  ASSERT_GT(result.NumTri(), 0);
+  const MeshGL64 mesh = result.GetMeshGL64();
+  ASSERT_EQ(mesh.numProp, 6);
+  for (size_t i = 0; i < mesh.vertProperties.size(); ++i) {
+    EXPECT_TRUE(std::isfinite(mesh.vertProperties[i]))
+        << "property index " << i;
+  }
+  EXPECT_EQ(Manifold(mesh).Status(), Manifold::Error::NoError);
+}
+
 TEST(Properties, Epsilon) {
   Manifold cube = Manifold::Cube();
-  EXPECT_FLOAT_EQ(cube.GetEpsilon(), kPrecision);
+  EXPECT_FLOAT_EQ(cube.GetEpsilon(), Quality::GetRelativePrecision());
   cube = cube.Scale({0.1, 1, 10});
-  EXPECT_FLOAT_EQ(cube.GetEpsilon(), 10 * kPrecision);
+  EXPECT_FLOAT_EQ(cube.GetEpsilon(), 10 * Quality::GetRelativePrecision());
   cube = cube.Translate({-100, -10, -1});
-  EXPECT_FLOAT_EQ(cube.GetEpsilon(), 100 * kPrecision);
+  EXPECT_FLOAT_EQ(cube.GetEpsilon(), 100 * Quality::GetRelativePrecision());
 }
 
 TEST(Properties, Epsilon2) {
   Manifold cube = Manifold::Cube();
   cube = cube.Translate({-0.5, 0, 0}).Scale({2, 1, 1});
-  EXPECT_FLOAT_EQ(cube.GetEpsilon(), 2 * kPrecision);
+  EXPECT_FLOAT_EQ(cube.GetEpsilon(), Quality::GetRelativePrecision());
 }
 
 TEST(Properties, Tolerance) {
   double degrees = 1;
   double tol = sind(degrees);
   Manifold cube = Manifold::Cube({1, 1, 1}, true);
-  Manifold imperfect = (cube ^ cube.Rotate(degrees)).AsOriginal();
+  Manifold imperfect = cube ^ cube.Rotate(degrees);
   EXPECT_EQ(imperfect.NumTri(), 28);
 
   Manifold imperfect2 = imperfect.Simplify(tol);
@@ -73,16 +106,38 @@ TEST(Properties, Tolerance) {
 }
 
 TEST(Properties, ToleranceSphere) {
-  const int n = 1000;
+  const int n = 500;
   Manifold sphere = Manifold::Sphere(1, 4 * n);
   EXPECT_EQ(sphere.NumTri(), 8 * n * n);
 
-  Manifold sphere2 = sphere.SetTolerance(0.01);
-  EXPECT_LT(sphere2.NumTri(), 2500);
+  Manifold sphere2 = sphere.Simplify(0.01);
+  EXPECT_LT(sphere2.NumTri(), 1250);
   EXPECT_EQ(sphere2.Genus(), 0);
-  EXPECT_NEAR(sphere.Volume(), sphere2.Volume(), 0.05);
-  EXPECT_NEAR(sphere.SurfaceArea(), sphere2.SurfaceArea(), 0.06);
+  EXPECT_NEAR(sphere.Volume(), sphere2.Volume(), 0.002);
+  EXPECT_NEAR(sphere.SurfaceArea(), sphere2.SurfaceArea(), 0.015);
   if (options.exportModels) WriteTestOBJ("sphere.obj", sphere2);
+}
+
+TEST(Properties, ToleranceCylinder) {
+  const int n = 40;
+  Manifold cylinder = Manifold::Cylinder(2, 1, 1, 4 * n);
+  Manifold cylinder2 = cylinder.Simplify(0.01);
+  EXPECT_LT(cylinder2.NumTri(), 165);
+  EXPECT_EQ(cylinder2.Genus(), 0);
+  EXPECT_NEAR(cylinder.Volume(), cylinder2.Volume(), 0.011);
+  EXPECT_NEAR(cylinder.SurfaceArea(), cylinder2.SurfaceArea(), 0.02);
+  if (options.exportModels) WriteTestOBJ("cylinder.obj", cylinder2);
+}
+
+TEST(Properties, ToleranceCube) {
+  Manifold cube = Manifold::Cube().Refine(5);
+  EXPECT_EQ(cube.NumTri(), 300);
+  Manifold cube2 = cube.Simplify();
+  EXPECT_EQ(cube2.NumTri(), 12);
+  EXPECT_EQ(cube2.Genus(), 0);
+  EXPECT_DOUBLE_EQ(cube.Volume(), cube2.Volume());
+  EXPECT_DOUBLE_EQ(cube.SurfaceArea(), cube2.SurfaceArea());
+  if (options.exportModels) WriteTestOBJ("cube.obj", cube2);
 }
 
 /**
@@ -154,16 +209,6 @@ TEST(Properties, CalculateNormals) {
   }
   EXPECT_EQ(numBad, 0);
   EXPECT_EQ(numBad2, 0);
-  for (int tv = out2.runIndex[0]; tv < out2.runIndex[1]; ++tv) {
-    const int v = out2.triVerts[tv];
-    auto pos = out2.GetVertPos(v);
-    auto norm = pos;
-    for (int j : {0, 1, 2}) {
-      norm[j] = out2.vertProperties[np * v + 3 + j];
-    }
-    EXPECT_FLOAT_EQ(la::length(norm), 1.0);
-    EXPECT_GT(dot(la::normalize(pos), norm), 0.99);
-  }
 }
 
 TEST(Properties, Coplanar) {

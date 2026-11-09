@@ -43,18 +43,6 @@
 namespace {
 using namespace manifold;
 
-struct Transform4x3 {
-  const mat3x4 transform;
-
-  vec3 operator()(vec3 position) { return transform * vec4(position, 1.0); }
-};
-
-struct UpdateMeshID {
-  const HashTableD<uint32_t> meshIDold2new;
-
-  void operator()(TriRef& ref) { ref.meshID = meshIDold2new[ref.meshID]; }
-};
-
 int GetLabels(std::vector<int>& components,
               const Vec<std::pair<int, int>>& edges, int numNodes) {
   DisjointSets uf(numNodes);
@@ -133,11 +121,10 @@ Manifold::Impl::Impl(Shape shape, const mat3x4 m) {
   vertPos_ = Vec(vertPos);
   for (auto& v : vertPos_) v = m * vec4(v, 1.0);
   CreateHalfedges(triVerts);
-  InitializeOriginal();
   CalculateBBox();
-  SetEpsilon();
   SortGeometry();
-  SetNormalsAndCoplanar();
+  SetFaceAndVertNormals();
+  InitializeOriginal();
 }
 
 void Manifold::Impl::RemoveUnreferencedVerts() {
@@ -148,8 +135,7 @@ void Manifold::Impl::RemoveUnreferencedVerts() {
   for_each_n(policy, countAt(0), halfedge_.size(), [&keep, this](int edge) {
     const int startVert = halfedge_.Start(edge);
     if (startVert >= 0) {
-      reinterpret_cast<std::atomic<int>*>(&keep[startVert])
-          ->store(1, std::memory_order_relaxed);
+      AtomicRef<int>(keep[startVert]).store(1, std::memory_order_relaxed);
     }
   });
 
@@ -193,14 +179,20 @@ void Manifold::Impl::EagerTransformPropNormals(
   }
 }
 
-void Manifold::Impl::InitializeOriginal() {
-  const int meshID = ReserveIDs(1);
+/**
+ * Initialize the mesh IDs and face IDs of this manifold.
+ *
+ * @param id The original ID to assign to this manifold. If -1, a new ID is
+ *          generated.
+ */
+void Manifold::Impl::InitializeOriginal(int id) {
+  const int meshID = id < 0 ? ReserveIDs(1) : id;
   meshRelation_.originalID = meshID;
   auto& triRef = meshRelation_.triRef;
   triRef.resize_nofill(NumTri());
   for_each_n(autoPolicy(NumTri(), 1e5), countAt(0), NumTri(),
              [meshID, &triRef](const int tri) {
-               triRef[tri] = {meshID, meshID, -1, triRef[tri].coplanarID};
+               triRef[tri] = {meshID, meshID, -1, tri};
              });
   // Preserve the AND-across-old-Relations state so AsOriginal keeps the
   // recording when it builds a fresh Relation. Primitives start with an
@@ -211,68 +203,18 @@ void Manifold::Impl::InitializeOriginal() {
                                            hadNormals};
 }
 
-void Manifold::Impl::SetNormalsAndCoplanar() {
+void Manifold::Impl::SetFaceAndVertNormals() {
   ZoneScoped;
   const int numTri = NumTri();
   faceNormal_.resize(numTri);
-  struct TriPriority {
-    double area2;
-    int tri;
-  };
-  Vec<TriPriority> triPriority(numTri);
-  for_each_n(autoPolicy(numTri), countAt(0), numTri,
-             [&triPriority, this](int tri) {
-               meshRelation_.triRef[tri].coplanarID = -1;
-               if (halfedge_.Start(3 * tri) < 0) {
-                 triPriority[tri] = {0, tri};
-                 return;
-               }
-               const vec3 v = vertPos_[halfedge_.Start(3 * tri)];
-               const vec3 n = cross(vertPos_[halfedge_.End(3 * tri)] - v,
-                                    vertPos_[halfedge_.End(3 * tri + 1)] - v);
-               faceNormal_[tri] = normalize(n);
-               if (std::isnan(faceNormal_[tri].x))
-                 faceNormal_[tri] = vec3(0, 0, 1);
-               triPriority[tri] = {length2(n), tri};
-             });
+  for_each_n(autoPolicy(numTri), countAt(0), numTri, [this](int tri) {
+    if (!halfedge_.Valid(3 * tri)) return;
+    const vec3 v = vertPos_[halfedge_.Start(3 * tri)];
+    const vec3 n = cross(vertPos_[halfedge_.End(3 * tri)] - v,
+                         vertPos_[halfedge_.End(3 * tri + 1)] - v);
+    faceNormal_[tri] = SafeNormalize(n);
+  });
 
-  stable_sort(triPriority.begin(), triPriority.end(),
-              [](auto a, auto b) { return a.area2 > b.area2; });
-
-  Vec<int> interiorHalfedges;
-  for (const auto tp : triPriority) {
-    if (meshRelation_.triRef[tp.tri].coplanarID >= 0) continue;
-
-    meshRelation_.triRef[tp.tri].coplanarID = tp.tri;
-    if (halfedge_.Start(3 * tp.tri) < 0) continue;
-    const vec3 base = vertPos_[halfedge_.Start(3 * tp.tri)];
-    const vec3 normal = faceNormal_[tp.tri];
-    interiorHalfedges.resize(3);
-    interiorHalfedges[0] = 3 * tp.tri;
-    interiorHalfedges[1] = 3 * tp.tri + 1;
-    interiorHalfedges[2] = 3 * tp.tri + 2;
-    while (!interiorHalfedges.empty()) {
-      const int h = NextHalfedge(halfedge_.Pair(interiorHalfedges.back()));
-      interiorHalfedges.pop_back();
-      if (meshRelation_.triRef[h / 3].coplanarID >= 0) continue;
-
-      const vec3 v = vertPos_[halfedge_.End(h)];
-      if (std::abs(dot(v - base, normal)) < tolerance_) {
-        const size_t tri = h / 3;
-        meshRelation_.triRef[tri].coplanarID = tp.tri;
-        faceNormal_[tri] = normal;
-
-        if (interiorHalfedges.empty() ||
-            h != halfedge_.Pair(interiorHalfedges.back())) {
-          interiorHalfedges.push_back(h);
-        } else {
-          interiorHalfedges.pop_back();
-        }
-        const int hNext = NextHalfedge(h);
-        interiorHalfedges.push_back(hNext);
-      }
-    }
-  }
   CalculateVertNormals();
 }
 
@@ -365,10 +307,7 @@ struct PrepHalfedges {
 
 /**
  * Create the halfedge_ data structure from a list of triangles. If the optional
- * prop2vert array is missing, it's assumed these triangles are are pointing to
- * both vert and propVert indices. If prop2vert is present, the triangles are
- * assumed to be pointing to propVert indices only. The prop2vert array is used
- * to map the propVert indices to vert indices.
+ * triVert array is missing, it's assumed that triProp is identical to triVert.
  */
 void Manifold::Impl::CreateHalfedges(const Vec<ivec3>& triProp,
                                      const Vec<ivec3>& triVert) {
@@ -534,6 +473,16 @@ void Manifold::Impl::CreateHalfedges(const Vec<ivec3>& triProp,
 
   halfedge_.clear(true);
   halfedge_.resize_nofill(numHalfedge);
+  // With an odd number of halfedges (e.g. after degenerate triangles were
+  // dropped from the input) the pairing below leaves the last sorted one
+  // unset. Give it no pair, so IsManifold() rejects the mesh instead of
+  // following an uninitialized pair index.
+  if (numHalfedge % 2 != 0) {
+    const int leftover = ids[numHalfedge - 1];
+    halfedge_.SetStart(leftover, halfedge[leftover].startVert);
+    halfedge_.SetProp(leftover, halfedge[leftover].propVert);
+    halfedge_.SetPair(leftover, -1);
+  }
   for_each_n(policy, countAt(0), numEdge,
              [this, &halfedge, &ids, &removed, numEdge](int i) {
                const int pair0 = ids[i];
@@ -592,9 +541,8 @@ void Manifold::Impl::WarpBatch(std::function<void(VecView<vec3>)> warpFunc) {
     MakeEmpty(Error::NonFiniteVertex);
     return;
   }
-  SetEpsilon();
   SortGeometry();
-  SetNormalsAndCoplanar();
+  SetFaceAndVertNormals();
   meshRelation_.originalID = -1;
 }
 
@@ -612,8 +560,6 @@ Manifold::Impl Manifold::Impl::Transform(const mat3x4& transform_) const {
     return result;
   }
   result.meshRelation_ = meshRelation_;
-  result.epsilon_ = epsilon_;
-  result.tolerance_ = tolerance_;
   result.numProp_ = numProp_;
   result.properties_ = properties_;
   result.bBox_ = bBox_;
@@ -629,7 +575,7 @@ Manifold::Impl Manifold::Impl::Transform(const mat3x4& transform_) const {
   result.faceNormal_.resize(faceNormal_.size());
   result.vertNormal_.resize(vertNormal_.size());
   transform(vertPos_.begin(), vertPos_.end(), result.vertPos_.begin(),
-            Transform4x3({transform_}));
+            [&transform_](const vec3& v) { return transform_ * vec4(v, 1.0); });
 
   mat3 normalTransform = NormalTransform(transform_);
   transform(faceNormal_.begin(), faceNormal_.end(), result.faceNormal_.begin(),
@@ -657,10 +603,6 @@ Manifold::Impl Manifold::Impl::Transform(const mat3x4& transform_) const {
   }
 
   result.CalculateBBox();
-  // Scale epsilon by the norm of the 3x3 portion of the transform.
-  result.epsilon_ *= SpectralNorm(mat3(transform_));
-  // Maximum of inherited epsilon loss and translational epsilon loss.
-  result.SetEpsilon(result.epsilon_);
 
   if (!result.IsEmpty()) {
     if (Collider::IsAxisAligned(transform_)) {
@@ -675,19 +617,6 @@ Manifold::Impl Manifold::Impl::Transform(const mat3x4& transform_) const {
     }
   }
   return result;
-}
-
-/**
- * Sets epsilon based on the bounding box, and limits its minimum value
- * by the optional input.
- */
-void Manifold::Impl::SetEpsilon(double minEpsilon, bool useSingle) {
-  epsilon_ = MaxEpsilon(minEpsilon, bBox_);
-  double minTol = epsilon_;
-  if (useSingle)
-    minTol =
-        std::max(minTol, std::numeric_limits<float>::epsilon() * bBox_.Scale());
-  tolerance_ = std::max(tolerance_, minTol);
 }
 
 /**
@@ -750,20 +679,31 @@ void Manifold::Impl::CalculateVertNormals() {
  */
 void Manifold::Impl::IncrementMeshIDs() {
   ZoneScoped;
-  HashTable<uint32_t> meshIDold2new(meshRelation_.meshIDtransform.size() * 2);
+  const int numMeshIDs = meshRelation_.meshIDtransform.size();
+  if (numMeshIDs == 1 && meshRelation_.meshIDtransform.begin()->first == 0)
+    return;
+
+  HashTable<uint32_t> meshIDold2new(numMeshIDs * 2);
   // Update keys of the transform map
   std::map<int, Relation> oldTransforms;
   std::swap(meshRelation_.meshIDtransform, oldTransforms);
-  const int numMeshIDs = oldTransforms.size();
+
   int nextMeshID = ReserveIDs(numMeshIDs);
   for (const auto& pair : oldTransforms) {
-    meshIDold2new.D().Insert(pair.first, nextMeshID);
-    meshRelation_.meshIDtransform[nextMeshID++] = pair.second;
+    if (pair.first == 0) {
+      meshRelation_.meshIDtransform[0] = pair.second;
+      continue;
+    }
+    const int thisID = nextMeshID++;
+    meshIDold2new.D().Insert(pair.first, thisID);
+    meshRelation_.meshIDtransform[thisID] = pair.second;
   }
 
   const size_t numTri = NumTri();
   for_each_n(autoPolicy(numTri, 1e5), meshRelation_.triRef.begin(), numTri,
-             UpdateMeshID({meshIDold2new.D()}));
+             [&meshIDold2new](TriRef& tri) {
+               tri.meshID = meshIDold2new.D()[tri.meshID];
+             });
 }
 
 #ifndef MANIFOLD_NO_IOSTREAM
@@ -829,7 +769,8 @@ static std::ostream& WriteOBJWithEpsilon(std::ostream& stream,
 static std::pair<MeshGL64, std::optional<double>> ReadOBJWithEpsilon(
     std::istream& stream) {
   static const std::string FLOAT_PATTERN =
-      "(-?\\d+(?:\\.\\d*)?(?:[eE][+\\-]?\\d+)?)";
+      "(-?(?:0[xX][0-9a-fA-F]+(?:\\.[0-9a-fA-F]*)?[pP][+\\-]?\\d+|\\d+(?:\\."
+      "\\d*)?(?:[eE][+\\-]?\\d+)?))";
   static const std::string FACE_ELEMENT = "(\\d+)(?:\\S+)?";
   static const std::string TRAILING_SPACES = "(?:\\s*)";
   static const std::string SEPARATOR = "\\s+";
@@ -895,7 +836,6 @@ Manifold Manifold::ReadOBJ(std::istream& stream) {
   if (!stream.good()) return Invalid();
   auto [mesh, epsilon] = ReadOBJWithEpsilon(stream);
   auto impl = std::make_shared<Impl>(mesh);
-  if (epsilon) impl->SetEpsilon(epsilon.value());
   return Manifold(impl);
 }
 

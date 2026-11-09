@@ -16,7 +16,7 @@
  * @primaryExport
  */
 
-import {Box, ErrorStatus, ExecutionContext, FillRule, JoinType, Mat3, Mat4, Polygons, RayHit, Rect, SealedFloat32Array, SealedUint32Array, SimplePolygon, Smoothness, Vec2, Vec3} from './manifold-global-types';
+import {Box, ErrorStatus, ExecutionContext, JoinType, Mat3, Mat4, Polygons, RayHit, Rect, SealedFloat32Array, SealedUint32Array, SimplePolygon, Vec2, Vec3} from './manifold-global-types';
 
 export {ExecutionContext} from './manifold-global-types';
 
@@ -36,6 +36,9 @@ export {ExecutionContext} from './manifold-global-types';
  */
 export function triangulate(
     polygons: Polygons, epsilon?: number, allowConvex?: boolean): Vec3[];
+
+export function setRelativePrecision(precision: number): void;
+export function getRelativePrecision(): number;
 
 /**
  * Sets an angle constraint the default number of circular segments for the
@@ -93,28 +96,24 @@ export function resetToCircularDefaults(): void;
 
 /**
  * Two-dimensional cross sections guaranteed to be without self-intersections,
- * or overlaps between polygons (from construction onwards). This class makes
- * use of the Clipper2 library for polygon clipping (boolean) and offsetting
- * operations.
+ * or overlaps between polygons (from construction onwards). Polygon clipping
+ * (boolean) and offsetting use Manifold's own robust floating-point predicates.
  *
  * @see {@link https://manifoldcad.org/docs/html/classmanifold_1_1_cross_section.html | C++ API: CrossSection Class Reference}
- * @see {@link https://www.angusj.com/clipper2/Docs/Overview.htm | Clipper2 - Polygon Clipping Offsetting & Triangulating}
  * @group Basics
  */
 export class CrossSection {
   /**
    * Create a 2d cross-section from a set of contours (complex polygons). A
-   * boolean union operation (with Positive filling rule by default) is
-   * performed to combine overlapping polygons and ensure the resulting
-   * CrossSection is free of intersections.
+   * boolean union operation (with the Positive filling rule) is performed to
+   * combine overlapping polygons and ensure the resulting CrossSection is free
+   * of intersections.
    *
    * @param contours A set of closed paths describing zero or more complex
    * polygons.
-   * @param fillRule The filling rule used to interpret polygon sub-regions in
-   * contours.
    * @group Basics
    */
-  constructor(contours: Polygons, fillRule?: FillRule);
+  constructor(contours: Polygons);
 
   // Shapes
 
@@ -150,9 +149,9 @@ export class CrossSection {
    * avoid interpolation artifacts. Default is none.
    * @param twistDegrees Amount to twist the top crossSection relative to the
    * bottom, interpolated linearly for the divisions in between.
-   * @param scaleTop Amount to scale the top (independently in X and Y). If the
-   * scale is {0, 0}, a pure cone is formed with only a single vertex at the
-   * top. Default {1, 1}.
+   * @param scaleTop Amount to scale the top (independently in X and Y). A
+   * single number scales X and Y equally. If the scale is {0, 0}, a pure cone
+   * is formed with only a single vertex at the top. Default {1, 1}.
    * @param center If true, the extrusion is centered on the z-axis through the
    *     origin
    * as opposed to resting on the XY plane as is default.
@@ -264,22 +263,25 @@ export class CrossSection {
 
   /**
    * Remove vertices from the contours in this CrossSection that are less than
-   * the specified distance epsilon from an imaginary line that passes through
+   * the specified distance tolerance from an imaginary line that passes through
    * its two adjacent vertices. Near duplicate vertices and collinear points
-   * will be removed at lower epsilons, with elimination of line segments
-   * becoming increasingly aggressive with larger epsilons.
+   * will be removed at lower tolerances, with elimination of line segments
+   * becoming increasingly aggressive with larger tolerances.
    *
    * It is recommended to apply this function following Offset, in order to
    * clean up any spurious tiny line segments introduced that do not improve
    * quality in any meaningful way. This is particularly important if further
    * offseting operations are to be performed, which would compound the issue.
    *
-   * @param epsilon minimum distance vertices must diverge from the hypothetical
-   *     outline without them in order to be included in the output (default
-   *     1e-6)
+   * @param tolerance minimum distance vertices must diverge from the
+   *     hypothetical outline without them in order to be included in the
+   *     output. Default 0 uses the cross-section's own tolerance (from
+   *     tolerance()), which is geometry-scale-derived and may be larger than a
+   *     fixed epsilon for large-coordinate geometry. Pass an explicit value to
+   *     override.
    * @group Transformations
    */
-  simplify(epsilon?: number): CrossSection;
+  simplify(tolerance?: number): CrossSection;
 
   // Clipping Operations
 
@@ -357,13 +359,6 @@ export class CrossSection {
   // Topological Operations
 
   /**
-   * Construct a CrossSection from a vector of other Polygons (batch
-   * boolean union).
-   * @group Boolean
-   */
-  static compose(polygons: readonly(CrossSection|Polygons)[]): CrossSection;
-
-  /**
    * This operation returns a vector of CrossSections that are topologically
    * disconnected, each containing one outline contour with zero or more
    * holes.
@@ -375,17 +370,43 @@ export class CrossSection {
 
   /**
    * Create a 2d cross-section from a set of contours (complex polygons). A
-   * boolean union operation (with Positive filling rule by default) is
-   * performed to combine overlapping polygons and ensure the resulting
-   * CrossSection is free of intersections.
+   * boolean union operation (with the Positive filling rule) is performed to
+   * combine overlapping polygons and ensure the resulting CrossSection is free
+   * of intersections.
    *
    * @param contours A set of closed paths describing zero or more complex
    * polygons.
-   * @param fillRule The filling rule used to interpret polygon sub-regions in
-   * contours.
    * @group Input & Output
    */
-  static ofPolygons(contours: Polygons, fillRule?: FillRule): CrossSection;
+  static ofPolygons(contours: Polygons): CrossSection;
+
+  /**
+   * Create a 2d cross-section from a set of contours, reading them by the
+   * even-odd rule: a sub-region is filled when its winding number is odd, so
+   * overlapping an odd number of contours fills and overlapping an even number
+   * leaves a hole. Use this to take input authored for an even-odd tool such
+   * as OpenSCAD. The result is regularized like any other CrossSection, so
+   * every later operation behaves the same.
+   *
+   * @param contours A set of closed paths describing zero or more complex
+   * polygons.
+   * @group Input & Output
+   */
+  static evenOdd(contours: Polygons): CrossSection;
+
+  /**
+   * Create a 2d cross-section from a set of contours, reading them by the
+   * nonzero rule: a sub-region is filled when its signed winding number is
+   * not zero. Both clockwise and counter-clockwise contours can enclose solid
+   * regions; opposite windings cancel where their sum is zero. Unlike even-odd
+   * fill, a winding of two remains filled. The result is regularized like any
+   * other CrossSection, so every later operation behaves the same.
+   *
+   * @param contours A set of closed paths describing zero or more complex
+   * polygons.
+   * @group Input & Output
+   */
+  static nonZero(contours: Polygons): CrossSection;
 
   /**
    * Return the contours of this CrossSection as a list of simple polygons.
@@ -543,9 +564,9 @@ export class Manifold {
    * avoid interpolation artifacts. Default is none.
    * @param twistDegrees Amount to twist the top crossSection relative to the
    * bottom, interpolated linearly for the divisions in between.
-   * @param scaleTop Amount to scale the top (independently in X and Y). If the
-   * scale is {0, 0}, a pure cone is formed with only a single vertex at the
-   * top. Default {1, 1}.
+   * @param scaleTop Amount to scale the top (independently in X and Y). A
+   * single number scales X and Y equally. If the scale is {0, 0}, a pure cone
+   * is formed with only a single vertex at the top. Default {1, 1}.
    * @param center If true, the extrusion is centered on the z-axis through the
    *     origin
    * as opposed to resting on the XY plane as is default.
@@ -588,38 +609,6 @@ export class Manifold {
    * @group Input & Output
    */
   static ofMesh(mesh: Mesh): Manifold;
-
-  /**
-   * Constructs a smooth version of the input mesh by creating tangents; this
-   * method will throw if you have supplied tangents with your mesh already. The
-   * actual triangle resolution is unchanged; use the Refine() method to
-   * interpolate to a higher-resolution curve.
-   *
-   * By default, every edge is calculated for maximum smoothness (very much
-   * approximately), attempting to minimize the maximum mean Curvature
-   * magnitude. No higher-order derivatives are considered, as the interpolation
-   * is independent per triangle, only sharing constraints on their boundaries.
-   *
-   * @param mesh input Mesh.
-   * @param sharpenedEdges If desired, you can supply a vector of sharpened
-   * halfedges, which should in general be a small subset of all halfedges.
-   * Order of entries doesn't matter, as each one specifies the desired
-   * smoothness (between zero and one, with one the default for all unspecified
-   * halfedges) and the halfedge index (3 * triangle index + [0,1,2] where 0 is
-   * the edge between triVert 0 and 1, etc).
-   *
-   * At a smoothness value of zero, a sharp crease is made. The smoothness is
-   * interpolated along each edge, so the specified value should be thought of
-   * as an average. Where exactly two sharpened edges meet at a vertex, their
-   * tangents are rotated to be colinear so that the sharpened edge can be
-   * continuous. Vertices with only one sharpened edge are completely smooth,
-   * allowing sharpened edges to smoothly vanish at termination. A single vertex
-   * can be sharpened by sharping all edges that are incident on it, allowing
-   * cones to be formed.
-   *
-   * @group Smoothing
-   */
-  static smooth(mesh: Mesh, sharpenedEdges?: readonly Smoothness[]): Manifold;
 
   // Signed Distance Functions
 
@@ -745,26 +734,6 @@ export class Manifold {
    * @group Smoothing
    */
   smoothByNormals(normalIdx?: number): Manifold;
-
-  /**
-   * Smooths out the Manifold by filling in the halfedgeTangent vectors. The
-   * geometry will remain unchanged until Refine or RefineToLength is called to
-   * interpolate the surface. This version uses the geometry of the triangles
-   * and pseudo-normals to define the tangent vectors.
-   *
-   * @param minSharpAngle degrees, default 52.5. Any edges with angles greater
-   * than this value will remain sharp. The rest will be smoothed to G1
-   * continuity, with the caveat that flat faces of three or more triangles will
-   * always remain flat. With a value of zero, the model is faceted, but in this
-   * case there is no point in smoothing.
-   *
-   * @param minSmoothness range: 0 - 1, default 0. The smoothness applied to
-   * sharp angles. The default gives a hard edge, while values > 0 will give a
-   * small fillet on these sharp edges. A value of 1 is equivalent to a
-   * minSharpAngle of 180 - all edges will be smooth.
-   * @group Smoothing
-   */
-  smoothOut(minSharpAngle?: number, minSmoothness?: number): Manifold;
 
   /**
    * Increase the density of the mesh by splitting every edge into n pieces. For
@@ -1092,24 +1061,6 @@ export class Manifold {
   boundingBox(): Box;
 
   /**
-   * Returns the tolerance of this Manifold's vertices, which tracks the
-   * approximate rounding error over all the transforms and operations that have
-   * led to this state. Any triangles that are colinear within this tolerance
-   * are considered degenerate and removed. This is the value of &epsilon;
-   * defining
-   * [&epsilon;-valid](https://github.com/elalish/manifold/wiki/Manifold-Library#definition-of-%CE%B5-valid).
-   * @group Information
-   */
-  tolerance(): number;
-
-  /**
-   * Return a copy of the manifold with the set tolerance value.
-   * This performs mesh simplification when the tolerance value is increased.
-   * @group Transformations
-   */
-  setTolerance(tolerance: number): Manifold;
-
-  /**
    * Return a copy of the manifold simplified to the given tolerance, but with
    * its actual tolerance value unchanged. The result will contain a subset of
    * the original verts and all surfaces will have moved by less than tolerance.
@@ -1163,6 +1114,20 @@ export class Manifold {
   rayCast(origin: Vec3, endpoint: Vec3): RayHit[];
 
   /**
+   * Returns the winding number of this manifold around each of the given
+   * points. Returns 0 for points outside and a non-zero value (typically ±1)
+   * for points inside a simple closed surface. May exceed ±1 in magnitude for
+   * manifolds with overlapping regions.
+   *
+   * @param points The 3D query points.
+   *
+   * @group Spatial Queries
+   */
+  windingNumber(points: Vec3[]): number[];
+
+
+
+  /**
    * Returns the reason for an input Mesh producing an empty Manifold. This
    * Status will carry on through operations like NaN propogation, ensuring an
    * errored mesh doesn't get mysteriously lost. Empty meshes may still show
@@ -1207,21 +1172,20 @@ export class Manifold {
   // ID Management
 
   /**
-   * If you copy a manifold, but you want this new copy to have new properties
-   * (e.g. a different UV mapping), you can reset its IDs to a new original,
-   * meaning it will now be referenced by its descendants instead of the meshes
-   * it was built from, allowing you to differentiate the copies when applying
-   * your properties to the final result.
+   * This removes all relations (originalID, faceID, transform) to ancestor
+   * meshes and this new Manifold is marked an original. It also recreates faces
+   * - these don't get joined at boundaries where originalID changes, so the
+   * reset may allow triangles of flat faces to be further collapsed with
+   * Simplify().
    *
-   * This function also condenses all coplanar faces in the relation, and
-   * collapses those edges. If you want to have inconsistent properties across
-   * these faces, meaning you want to preserve some of these edges, you should
-   * instead call GetMesh(), calculate your properties and use these to
-   * construct a new manifold.
-   *
-   * @group Mesh ID
+   * @param id The ID to assign to this manifold. If negative (the default), a
+   *     new ID is assigned. Use zero to match all default-constructed
+   *     manifolds, thus not keeping track of the joints between input
+   *     manifolds. Ensure separate IDs are used for mesh inputs containing
+   *     properties, generally by calling this function without arguments just
+   *     after construction.
    */
-  asOriginal(): Manifold;
+  asOriginal(id?: number): Manifold;
 
   /**
    * If this mesh is an original, this returns its ID that can be referenced

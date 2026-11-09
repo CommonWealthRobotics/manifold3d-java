@@ -36,9 +36,10 @@ if (navigator.serviceWorker) {
 
   if (window.caches) {
     window.caches.keys().then(keys => {
-      keys.filter(
-              key => key.startsWith('manifoldCAD-cache-') &&
-                  key !== 'manifoldCAD-cache-v4')
+      // Caches are now keyed by deployment scope ('manifoldCAD-cache:'),
+      // and the service worker prunes its own. Anything left on the old
+      // 'manifoldCAD-cache-' scheme is dead and can go.
+      keys.filter(key => key.startsWith('manifoldCAD-cache-'))
           .forEach(key => window.caches.delete(key));
     });
   }
@@ -204,17 +205,22 @@ function attachSplitterDrag(splitterElement, handleDragMove) {
     pointerDownEvent.preventDefault();
     splitterElement.setPointerCapture(pointerDownEvent.pointerId);
 
+    const dragAbortController = new AbortController();
     const onPointerMove = moveEvent => handleDragMove(moveEvent);
     const onPointerEnd = endEvent => {
       splitterElement.releasePointerCapture(endEvent.pointerId);
-      splitterElement.removeEventListener('pointermove', onPointerMove);
-      splitterElement.removeEventListener('pointerup', onPointerEnd);
-      splitterElement.removeEventListener('pointercancel', onPointerEnd);
+      dragAbortController.abort();
     };
 
-    splitterElement.addEventListener('pointermove', onPointerMove);
-    splitterElement.addEventListener('pointerup', onPointerEnd);
-    splitterElement.addEventListener('pointercancel', onPointerEnd);
+    splitterElement.addEventListener('pointermove', onPointerMove, {
+      signal: dragAbortController.signal,
+    });
+    splitterElement.addEventListener('pointerup', onPointerEnd, {
+      signal: dragAbortController.signal,
+    });
+    splitterElement.addEventListener('pointercancel', onPointerEnd, {
+      signal: dragAbortController.signal,
+    });
   });
 }
 
@@ -256,10 +262,6 @@ function setupPaneSplitters() {
         leftPanePercent, LEFT_PANE_MIN_PERCENT, LEFT_PANE_MAX_PERCENT);
     pageElement.style.setProperty('--left-pane', `${clampedLeftPanePercent}%`);
     window.localStorage.setItem(leftPaneStorageKey, clampedLeftPanePercent);
-
-    // Monaco reacts to container size changes, but an explicit layout keeps
-    // drag updates immediate and smooth.
-    editor?.layout({});
   });
 
   attachSplitterDrag(verticalSplitterElement, moveEvent => {
@@ -1269,7 +1271,9 @@ function createWorker() {
       output.threeMFURL = null;
       threemfButton.disabled = true;
 
-      // Start all over again.
+      // Start all over again.  Stop the old worker first, or it stays alive
+      // with its wasm memory after every error.
+      manifoldWorker.terminate();
       createWorker();
 
     } else if (message?.type === 'log') {

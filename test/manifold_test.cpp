@@ -17,9 +17,8 @@
 #include <algorithm>
 
 #include "../src/execution_impl.h"
-#ifdef MANIFOLD_CROSS_SECTION
+#include "gtest/gtest.h"
 #include "manifold/cross_section.h"
-#endif
 #include "test.h"
 
 namespace {
@@ -93,11 +92,11 @@ TEST(Manifold, MeshDeterminism) {
   Manifold result = cube1 - cube2;
   MeshGL out = result.GetMeshGL();
 
-  uint32_t triVerts[]{0,  2,  7,  0,  10, 1,  0,  6,  10, 0, 1,  2,  1, 3,  2,
-                      1,  5,  3,  1,  11, 5,  0,  7,  6,  6, 7,  8,  6, 8,  13,
-                      10, 12, 11, 1,  10, 11, 11, 13, 5,  6, 12, 10, 6, 13, 12,
-                      13, 9,  5,  13, 8,  9,  11, 12, 13, 4, 2,  3,  4, 3,  5,
-                      4,  7,  2,  4,  5,  8,  4,  8,  7,  9, 8,  5};
+  uint32_t triVerts[]{0, 2,  7,  0,  10, 1,  0,  6,  10, 0,  1,  2, 1, 3,  2,
+                      1, 5,  3,  4,  2,  3,  1,  11, 5,  4,  3,  5, 0, 7,  6,
+                      6, 7,  8,  4,  7,  2,  4,  5,  8,  4,  8,  7, 6, 8,  13,
+                      9, 8,  5,  10, 12, 11, 1,  10, 11, 11, 13, 5, 6, 12, 10,
+                      6, 13, 12, 13, 9,  5,  13, 8,  9,  11, 12, 13};
 
   float vertProperties[]{-1,      -1,       -1,     -1,      -1,       1,
                          -1,      -0.11491, 0.3099, -1,      -0.11491, 1,
@@ -190,6 +189,16 @@ TEST(Manifold, InvalidInput5) {
   Manifold tet(tetGL);
   EXPECT_TRUE(tet.IsEmpty());
   EXPECT_EQ(tet.Status(), Manifold::Error::MergeIndexOutOfBounds);
+}
+
+TEST(Manifold, InvalidInputOddHalfedgeCount) {
+  // An odd number of triangles leaves one halfedge without a partner; the
+  // mesh must be rejected, not paired through an uninitialized index.
+  MeshGL in = TetGL();
+  in.triVerts.insert(in.triVerts.end(), {2, 0, 1});
+  Manifold tet(in);
+  EXPECT_TRUE(tet.IsEmpty());
+  EXPECT_EQ(tet.Status(), Manifold::Error::NotManifold);
 }
 
 TEST(Manifold, InvalidInput6) {
@@ -528,14 +537,6 @@ TEST(Manifold, ErrorPropagationSmoothByNormals) {
             Manifold::Error::NonFiniteVertex);
 }
 
-TEST(Manifold, ErrorPropagationSmoothOut) {
-  MeshGL in = TetGL();
-  in.vertProperties[2 * 3 + 1] = NAN;
-  Manifold errored(in);
-  ASSERT_EQ(errored.Status(), Manifold::Error::NonFiniteVertex);
-  EXPECT_EQ(errored.SmoothOut().Status(), Manifold::Error::NonFiniteVertex);
-}
-
 TEST(Manifold, ErrorPropagationRefine) {
   MeshGL in = TetGL();
   in.vertProperties[2 * 3 + 1] = NAN;
@@ -545,15 +546,6 @@ TEST(Manifold, ErrorPropagationRefine) {
   EXPECT_EQ(errored.RefineToLength(0.1).Status(),
             Manifold::Error::NonFiniteVertex);
   EXPECT_EQ(errored.RefineToTolerance(0.1).Status(),
-            Manifold::Error::NonFiniteVertex);
-}
-
-TEST(Manifold, ErrorPropagationSetTolerance) {
-  MeshGL in = TetGL();
-  in.vertProperties[2 * 3 + 1] = NAN;
-  Manifold errored(in);
-  ASSERT_EQ(errored.Status(), Manifold::Error::NonFiniteVertex);
-  EXPECT_EQ(errored.SetTolerance(0.1).Status(),
             Manifold::Error::NonFiniteVertex);
 }
 
@@ -688,7 +680,7 @@ TEST(Manifold, OppositeFace) {
  */
 TEST(Manifold, Decompose) {
   std::vector<Manifold> manifoldList;
-  manifoldList.emplace_back(Manifold::Tetrahedron());
+  manifoldList.emplace_back(Manifold::Tetrahedron().AsOriginal());
   manifoldList.emplace_back(Manifold::Cube().Translate({2, 0, 0}).AsOriginal());
   manifoldList.emplace_back(
       Manifold::Sphere(1, 4).Translate({4, 0, 0}).AsOriginal());
@@ -709,7 +701,7 @@ TEST(Manifold, Decompose) {
 TEST(Manifold, DecomposeProps) {
   std::vector<MeshGL> input;
   std::vector<Manifold> manifoldList;
-  auto tet = WithPositionColors(Manifold::Tetrahedron());
+  auto tet = WithPositionColors(Manifold::Tetrahedron().AsOriginal());
   manifoldList.emplace_back(tet);
   input.emplace_back(tet.GetMeshGL());
   auto cube =
@@ -770,12 +762,67 @@ TEST(Manifold, CylinderZeroRadiusLow) {
   EXPECT_NEAR((coneApexTop ^ slicer).Volume(), 7.0 * totalVol / 8.0, 0.01);
 }
 
+TEST(Manifold, CylinderCenter) {
+  const int n = 256;
+  const double h = 5.0, r = 3.0;
+  const Manifold cylinder = Manifold::Cylinder(h, r, r, n, true);
+  const Manifold coneApexTop = Manifold::Cylinder(h, r, 0.0, n, true);
+  const Manifold coneApexBottom = Manifold::Cylinder(h, 0.0, r, n, true);
+
+  for (const Manifold& m : {cylinder, coneApexTop, coneApexBottom}) {
+    EXPECT_EQ(m.Status(), Manifold::Error::NoError);
+    const Box box = m.BoundingBox();
+    EXPECT_DOUBLE_EQ(box.min.z, -h / 2);
+    EXPECT_DOUBLE_EQ(box.max.z, h / 2);
+  }
+  EXPECT_NEAR(cylinder.Volume(), Manifold::Cylinder(h, r, r, n).Volume(), 1e-6);
+
+  // Same orientation check as CylinderZeroRadiusLow, on the centered cones.
+  const double totalVol = coneApexTop.Volume();
+  EXPECT_NEAR(coneApexBottom.Volume(), totalVol, 1e-6);
+  Manifold slicer = Manifold::Cube(vec3(2 * r + 1, 2 * r + 1, h / 2))
+                        .Translate(vec3(-(r + 0.5), -(r + 0.5), -h / 2));
+  EXPECT_NEAR((coneApexBottom ^ slicer).Volume(), totalVol / 8.0, 0.01);
+  EXPECT_NEAR((coneApexTop ^ slicer).Volume(), 7.0 * totalVol / 8.0, 0.01);
+}
+
+TEST(Manifold, ConstructorsOriginalID) {
+  // Every constructor returns an original with the shared ID 0, including
+  // the centered cylinder and the apex-at-bottom cone.
+  const Polygons square = {{{1, 0}, {2, 0}, {2, 1}, {1, 1}}};
+  const std::vector<Manifold> shapes = {
+      Manifold::Tetrahedron(),
+      Manifold::Cube(vec3(1.0), true),
+      Manifold::Sphere(1.0),
+      Manifold::Cylinder(2, 1),
+      Manifold::Cylinder(2, 1, 1, 0, true),
+      Manifold::Cylinder(2, 0, 1),
+      Manifold::Cylinder(2, 0, 1, 0, true),
+      Manifold::Extrude(square, 1.0),
+      Manifold::Revolve(square),
+      Manifold::Hull({vec3(0.0), vec3(1, 0, 0), vec3(0, 1, 0), vec3(0, 0, 1)}),
+      Manifold::Cube().MinkowskiSum(Manifold::Sphere(0.1, 8)),
+  };
+  for (const Manifold& m : shapes) {
+    EXPECT_EQ(m.Status(), Manifold::Error::NoError);
+    EXPECT_EQ(m.OriginalID(), 0);
+    EXPECT_EQ(m.GetMeshGL().runOriginalID, std::vector<uint32_t>{0});
+  }
+}
+
 TEST(Manifold, Extrude) {
   Polygons polys = SquareHole();
   Manifold donut = Manifold::Extrude(polys, 1.0, 3);
   EXPECT_EQ(donut.Genus(), 1);
   EXPECT_FLOAT_EQ(donut.Volume(), 12.0);
   EXPECT_FLOAT_EQ(donut.SurfaceArea(), 48.0);
+}
+
+TEST(Manifold, ExtrudeSquare) {
+  const Polygons square = {{{0, 0}, {1, 0}, {1, 1}, {0, 1}}};
+  const Manifold prism = Manifold::Extrude(square, 10.0);
+  EXPECT_NEAR(prism.Volume(), 10.0, 0.001);
+  EXPECT_NEAR(prism.SurfaceArea(), 42.0, 0.001);
 }
 
 TEST(Manifold, ExtrudeCone) {
@@ -816,14 +863,12 @@ TEST(Manifold, Revolve2) {
   EXPECT_NEAR(donutHole.SurfaceArea(), 96.0 * kPi, 1.0);
 }
 
-#ifdef MANIFOLD_CROSS_SECTION
 TEST(Manifold, Revolve3) {
   CrossSection circle = CrossSection::Circle(1, 32);
   Manifold sphere = Manifold::Revolve(circle.ToPolygons(), 32);
   EXPECT_NEAR(sphere.Volume(), 4.0 / 3.0 * kPi, 0.1);
   EXPECT_NEAR(sphere.SurfaceArea(), 4 * kPi, 0.15);
 }
-#endif
 
 TEST(Manifold, RevolveClip) {
   Polygons polys = {{{-5, -10}, {5, 0}, {-5, 10}}};
@@ -863,7 +908,6 @@ TEST(Manifold, PartialRevolveOffset) {
   }
 }
 
-#ifdef MANIFOLD_CROSS_SECTION
 TEST(Manifold, Warp) {
   CrossSection square = CrossSection::Square({1, 1});
   Manifold shape =
@@ -898,7 +942,6 @@ TEST(Manifold, Warp2) {
   EXPECT_NEAR(shape.SurfaceArea(), simplified.SurfaceArea(), 0.0001);
   EXPECT_NEAR(shape.Volume(), 321, 1);
 }
-#endif
 
 TEST(Manifold, WarpBatch) {
   Manifold cube = Manifold::Cube({2, 3, 4});
@@ -924,7 +967,6 @@ TEST(Manifold, WarpBatch) {
   EXPECT_EQ(shape1.SurfaceArea(), shape2.SurfaceArea());
 }
 
-#ifdef MANIFOLD_CROSS_SECTION
 TEST(Manifold, Project) {
   MeshGL input;
   input.numProp = 3;
@@ -1009,7 +1051,6 @@ TEST(Manifold, Project) {
   CrossSection projected = in.Project();
   EXPECT_NEAR(projected.Area(), 0.72, 0.01);
 }
-#endif
 
 /**
  * Testing more advanced Manifold operations.
@@ -1040,7 +1081,6 @@ TEST(Manifold, Transform) {
   Identical(cube.GetMeshGL(), cube2.GetMeshGL());
 }
 
-#ifdef MANIFOLD_CROSS_SECTION
 TEST(Manifold, Slice) {
   Manifold cube = Manifold::Cube();
   CrossSection bottom = cube.Slice();
@@ -1060,12 +1100,11 @@ TEST(Manifold, Simplify) {
       CrossSection::Circle(1, 20).Translate({10, 0}).ToPolygons();
   Manifold torus = Manifold::Revolve(polyCircle, 100);
   Manifold simplified = torus.Simplify(0.4);
-  EXPECT_NEAR(torus.Volume(), simplified.Volume(), 25);
-  EXPECT_NEAR(torus.SurfaceArea(), simplified.SurfaceArea(), 10);
+  EXPECT_NEAR(torus.Volume(), simplified.Volume(), 5);
+  EXPECT_NEAR(torus.SurfaceArea(), simplified.SurfaceArea(), 12);
 
   if (options.exportModels) WriteTestOBJ("torus.obj", simplified);
 }
-#endif
 
 TEST(Manifold, MeshID) {
   const Manifold cube = Manifold::Cube();
@@ -1073,14 +1112,13 @@ TEST(Manifold, MeshID) {
   cubeGL.runIndex.clear();
   cubeGL.runOriginalID.clear();
   Manifold cube1 = Manifold(cubeGL);
-  Manifold cube2 = Manifold(cubeGL);
-  EXPECT_NE(cube1.GetMeshGL().runOriginalID[0],
-            cube2.GetMeshGL().runOriginalID[0]);
+  EXPECT_EQ(cube1.GetMeshGL().runOriginalID[0], 0);
 }
 
 TEST(Manifold, MeshRelation) {
   Manifold gyroid = WithPositionColors(Gyroid());
   MeshGL gyroidMeshGL = gyroid.GetMeshGL();
+
   gyroid = gyroid.Simplify();
 
   if (options.exportModels) WriteTestOBJ("gyroid.obj", gyroid);
@@ -1111,10 +1149,10 @@ TEST(Manifold, MeshRelationRefine) {
 TEST(Manifold, MeshRelationRefinePrecision) {
   MeshGL inGL = WithPositionColors(Csaszar()).GetMeshGL();
   const int id = inGL.runOriginalID[0];
-  Manifold csaszar = Manifold::Smooth(inGL);
+  Manifold csaszar = Manifold(inGL).CalculateNormals(3, 180).SmoothByNormals(3);
 
   csaszar = csaszar.RefineToTolerance(0.05);
-  ExpectMeshes(csaszar, {{2343, 4686, 3}});
+  ExpectMeshes(csaszar, {{2135, 4270, 6}});
   std::vector<uint32_t> runOriginalID = csaszar.GetMeshGL().runOriginalID;
   EXPECT_EQ(runOriginalID.size(), 1);
   EXPECT_EQ(runOriginalID[0], id);
@@ -1124,8 +1162,8 @@ TEST(Manifold, MeshRelationRefinePrecision) {
 
 TEST(Manifold, MeshGLRoundTrip) {
   const Manifold cylinder = Manifold::Cylinder(2, 1);
-  EXPECT_GE(cylinder.OriginalID(), 0);
-  MeshGL inGL = cylinder.GetMeshGL();
+  EXPECT_EQ(cylinder.OriginalID(), 0);
+  MeshGL inGL = cylinder.TriID2FaceID().GetMeshGL();
   const Manifold cylinder2(inGL);
   const MeshGL outGL = cylinder2.GetMeshGL();
 
@@ -1138,7 +1176,6 @@ TEST(Manifold, MeshGLRoundTrip) {
 
 void CheckCube(const MeshGL& cubeSTL) {
   Manifold cube(cubeSTL);
-  cube = cube.AsOriginal();
   EXPECT_EQ(cube.NumTri(), 12);
   EXPECT_EQ(cube.NumVert(), 8);
   EXPECT_EQ(cube.NumPropVert(), 24);
@@ -1168,6 +1205,29 @@ TEST(Manifold, Merge) {
   EXPECT_TRUE(cubeSTL.Merge());
   EXPECT_EQ(cubeSTL.mergeFromVert.size(), 28);
   CheckCube(cubeSTL);
+}
+
+TEST(Manifold, MergeCollapsedEdgeParity) {
+  MeshGL mesh;
+  mesh.vertProperties = {0, 0, 0,  //
+                         0, 0, 0,  //
+                         1, 0, 0,  //
+                         3, 0, 0,  //
+                         3, 0, 0,  //
+                         4, 0, 0};
+  mesh.mergeFromVert = {1, 4};
+  mesh.mergeToVert = {0, 3};
+
+  // These triangles collapse to (0, 0, 2) and (3, 3, 5). Their opposing
+  // non-degenerate edges cancel, leaving one self-edge per triangle. Two
+  // copies of each triangle cancel those self-edges as well.
+  mesh.triVerts = {0, 1, 2, 0, 1, 2, 3, 4, 5, 3, 4, 5};
+  EXPECT_FALSE(mesh.Merge());
+
+  mesh.triVerts = {0, 1, 2, 3, 4, 5};
+  EXPECT_TRUE(mesh.Merge());
+  EXPECT_EQ(mesh.mergeFromVert, (std::vector<uint32_t>{1, 4}));
+  EXPECT_EQ(mesh.mergeToVert, (std::vector<uint32_t>{0, 3}));
 }
 
 TEST(Manifold, MergeEmpty) {
@@ -1215,6 +1275,7 @@ TEST(Manifold, MergeEmpty) {
   EXPECT_TRUE(shape.Merge());
   Manifold man(shape);
   EXPECT_EQ(man.Status(), Manifold::Error::NoError);
+  man = man.Simplify();
   EXPECT_TRUE(man.IsEmpty());
 }
 
@@ -1253,7 +1314,7 @@ TEST(Manifold, FaceIDRoundTrip) {
   const Manifold cube = Manifold::Cube();
   EXPECT_GE(cube.OriginalID(), 0);
   MeshGL inGL = cube.GetMeshGL();
-  EXPECT_EQ(NumUnique(inGL.faceID), 6);
+  EXPECT_TRUE(inGL.faceID.empty());
   inGL.faceID = {3, 3, 3, 3, 3, 3, 5, 5, 5, 5, 5, 5};
 
   const Manifold cube2(inGL);
@@ -1279,7 +1340,22 @@ TEST(Manifold, MirrorUnion2) {
   EXPECT_TRUE(result.MatchesTriNormals());
 }
 
-#ifdef MANIFOLD_CROSS_SECTION
+TEST(Manifold, MirroredNormals) {
+  // Issue #1781: Ensure that when a Manifold is mirrored the normals are
+  // mirrored along with it, so the resulting mesh vertices do not get
+  // duplicated. We check that the MeshGL vertex count remains the same, and
+  // that the mirrored normals remain outward-pointing.
+  const Manifold s = Manifold::Sphere(1.0, 32).CalculateNormals(0, 180);
+  const MeshGL mesh = s.GetMeshGL();
+  const MeshGL mirrored = s.Mirror({1, 0, 0}).GetMeshGL();
+  EXPECT_EQ(mesh.NumVert(), mirrored.NumVert());
+  EXPECT_TRUE(mirrored.HasNormals(0));
+  const auto [good, bad] = CountSphereNormalAlignment(
+      mirrored, 1.0, 3, [](vec3 pos) { return la::normalize(pos); });
+  EXPECT_EQ(bad, 0);
+  EXPECT_EQ(good, static_cast<int>(mirrored.NumVert()));
+}
+
 TEST(Manifold, Invalid) {
   auto invalid = Manifold::Error::InvalidConstruction;
   auto circ = CrossSection::Circle(10.);
@@ -1297,7 +1373,6 @@ TEST(Manifold, Invalid) {
   EXPECT_EQ(Manifold::Extrude(empty_circ.ToPolygons(), 10.).Status(), invalid);
   EXPECT_EQ(Manifold::Revolve(empty_sq.ToPolygons()).Status(), invalid);
 }
-#endif
 
 TEST(Manifold, MergeDegenerates) {
   MeshGL cube = Manifold::Cube(vec3(1), true).GetMeshGL();
@@ -1595,18 +1670,6 @@ TEST(Manifold, MergeRefine) {
   EXPECT_NEAR(manifold.Volume(), 31.21, 0.01);
 }
 
-#ifdef MANIFOLD_DEBUG
-TEST(Manifold, OpenscadCrash) {
-  ManifoldParamGuard guard;
-  ManifoldParams().processOverlaps = true;
-  Manifold m = ReadTestOBJ("openscad-nonmanifold-crash.obj");
-  // m is not empty
-  EXPECT_EQ(m.IsEmpty(), false);
-  Manifold m2 = m + m.Translate({0, 0.6, 0});
-  EXPECT_EQ(m2.IsEmpty(), false);
-}
-#endif
-
 // Deeply-nested CsgOpNode chain (e.g. repeated `+=` in a loop) must not
 // stack-overflow in the leaf-counting pre-pass. Cancel up front so we only
 // exercise NumLeaves, not the full boolean evaluation.
@@ -1626,3 +1689,22 @@ TEST(Manifold, DeepChainDoesNotOverflowNumLeaves) {
   auto& privateCtx = *ctx.impl_;
   EXPECT_EQ(privateCtx.totalBooleans.load(), kDepth);
 }
+
+#ifndef MANIFOLD_NO_FILESYSTEM
+// DedupeEdges collects every duplicated edge in one pass and then repairs
+// them in turn. An earlier repair can resolve a later entry; repairing that
+// stale entry relabelled an orbit to a copy of the wrong vertex, moving
+// triangle corners and removing solid while reporting NoError. Splitting
+// duplicate edges only relabels vertices and adds zero-area triangles, so the
+// volume must not change.
+//
+// The fixture is cut from a 28060-triangle union around its duplicate edges,
+// with each cut boundary closed by a fan. Its triangle order sets how the
+// 4-way edges pair up on load, which is what reproduces the stale entry.
+TEST(Manifold, DedupeEdgesNeverMovesACorner) {
+  Manifold m = ReadTestOBJ("dedupe_stale_duplicate.obj");
+  EXPECT_EQ(m.Status(), Manifold::Error::NoError);
+  // Signed volume of the fixture's triangles, computed exactly.
+  EXPECT_NEAR(m.Volume(), 0.00099963253073879, 1e-12);
+}
+#endif

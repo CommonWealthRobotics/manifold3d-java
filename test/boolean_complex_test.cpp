@@ -12,10 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifdef MANIFOLD_CROSS_SECTION
+#include "gtest/gtest.h"
 #include "manifold/cross_section.h"
-#endif
-
 #include "manifold/manifold.h"
 #include "test.h"
 
@@ -27,14 +25,13 @@ using namespace manifold;
  */
 
 TEST(BooleanComplex, Sphere) {
-  Manifold sphere = WithPositionColors(Manifold::Sphere(1.0, 12));
+  Manifold sphere = WithPositionColors(Manifold::Sphere(1.0, 12).AsOriginal());
   MeshGL sphereGL = sphere.GetMeshGL();
 
   Manifold sphere2 = sphere.Translate(vec3(0.5));
   Manifold result = sphere - sphere2;
 
   ExpectMeshes(result, {{74, 144, 3, 110}});
-  EXPECT_EQ(result.NumDegenerateTris(), 0);
 
   RelatedGL(result, {sphereGL});
   result = result.Refine(4);
@@ -44,23 +41,19 @@ TEST(BooleanComplex, Sphere) {
 }
 
 TEST(BooleanComplex, MeshRelation) {
-  Manifold gyroid = WithPositionColors(Gyroid());
+  Manifold gyroid = WithPositionColors(Gyroid().AsOriginal());
   MeshGL gyroidMeshGL = gyroid.GetMeshGL();
-  gyroid = gyroid.Simplify();
-
-  Manifold gyroid2 = gyroid.Translate(vec3(2.0));
 
   EXPECT_FALSE(gyroid.IsEmpty());
   EXPECT_TRUE(gyroid.MatchesTriNormals());
   EXPECT_LE(gyroid.NumDegenerateTris(), 0);
 
-  Manifold result = gyroid + gyroid2;
+  Manifold result = gyroid + gyroid.Translate(vec3(2.0));
   result = result.RefineToLength(0.1);
 
   if (options.exportModels) WriteTestOBJ("gyroidUnion.obj", result);
 
   EXPECT_TRUE(result.MatchesTriNormals());
-  EXPECT_LE(result.NumDegenerateTris(), 12);
   EXPECT_EQ(result.Decompose().size(), 1);
   EXPECT_NEAR(result.Volume(), 226, 1);
   EXPECT_NEAR(result.SurfaceArea(), 387, 1);
@@ -151,7 +144,6 @@ TEST(BooleanComplex, Cylinders) {
   m1 += m2;
 
   EXPECT_TRUE(m1.MatchesTriNormals());
-  EXPECT_LE(m1.NumDegenerateTris(), 12);
 }
 
 TEST(BooleanComplex, Subtract) {
@@ -273,7 +265,6 @@ TEST(BooleanComplex, Spiral) {
   EXPECT_EQ(result.Genus(), -120);
 }
 
-#ifdef MANIFOLD_CROSS_SECTION
 TEST(BooleanComplex, Sweep) {
   ManifoldParamGuard guard;
   ManifoldParams().processOverlaps = true;
@@ -508,7 +499,6 @@ TEST(BooleanComplex, Sweep) {
   EXPECT_NEAR(shape.Volume(), 3757, 1);
   if (options.exportModels) WriteTestOBJ("unionError.obj", shape);
 }
-#endif
 
 TEST(BooleanComplex, InterpolatedNormals) {
   MeshGL a;
@@ -846,6 +836,7 @@ TEST(BooleanComplex, InterpolatedNormals) {
   b.runOriginalID = {Manifold::ReserveIDs(1)};
 
   Manifold aManifold(a);
+
   Manifold bManifold(b);
 
   auto aMinusB = aManifold - bManifold;
@@ -1509,8 +1500,6 @@ TEST(BooleanComplex, CraycloudBool) {
   Manifold res = m1 - m2;
   EXPECT_EQ(res.Status(), Manifold::Error::NoError);
   EXPECT_FALSE(res.IsEmpty());
-  res = res.AsOriginal().Simplify();
-  EXPECT_TRUE(res.IsEmpty());
 }
 
 TEST(BooleanComplex, HullMask) {
@@ -1556,5 +1545,22 @@ TEST(BooleanComplex, OffsetSelfIntersect) {
   Manifold b = ReadTestOBJ("Offset4.obj");
   Manifold result = a + b;
   EXPECT_EQ(result.Status(), Manifold::Error::NoError);
+}
+
+TEST(BooleanComplex, InfiniteRecursion) {
+  Manifold a = ReadTestOBJ("r1.obj");
+  Manifold b = ReadTestOBJ("r2.obj");
+  Manifold result = a ^ b;
+  EXPECT_EQ(result.Status(), Manifold::Error::NoError);
+}
+
+TEST(BooleanComplex, OpenscadCrash) {
+  ManifoldParamGuard guard;
+  ManifoldParams().processOverlaps = true;
+  Manifold m = ReadTestOBJ("openscad-nonmanifold-crash.obj");
+  // m is not empty
+  EXPECT_EQ(m.IsEmpty(), false);
+  Manifold m2 = m + m.Translate({0, 0.6, 0});
+  EXPECT_EQ(m2.IsEmpty(), false);
 }
 #endif

@@ -12,6 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// nanobind includes Python.h, which must come before any standard header: it
+// sets feature macros such as _POSIX_C_SOURCE that they would set otherwise.
+#include "nanobind/nanobind.h"
+// (keep the above first)
 #include <optional>
 #include <string>
 
@@ -19,7 +23,6 @@
 #include "manifold/cross_section.h"
 #include "manifold/manifold.h"
 #include "manifold/polygon.h"
-#include "nanobind/nanobind.h"
 #include "nanobind/ndarray.h"
 #include "nanobind/operators.h"
 #include "nanobind/stl/function.h"
@@ -64,14 +67,17 @@ struct nb::detail::type_caster<la::vec<T, N>> {
   NB_TYPE_CASTER(la_type, const_name(la_name<la_type>::name));
 
   bool from_python(handle src, uint8_t flags, cleanup_list* cleanup) noexcept {
-    int size = PyObject_Size(src.ptr());  // negative on failure
-    if (size != N) return false;
+    size_t size;
+    PyObject* temp;
+    PyObject** o = seq_get(src.ptr(), &size, &temp);
+    bool success = o != nullptr && size == N;
     make_caster<T> t_cast;
-    for (int i = 0; i < size; i++) {
-      if (!t_cast.from_python(src[i], flags, cleanup)) return false;
-      value[i] = t_cast.value;
+    for (size_t i = 0; success && i < size; i++) {
+      success = t_cast.from_python(o[i], flags, cleanup);
+      if (success) value[i] = t_cast.value;
     }
-    return true;
+    Py_XDECREF(temp);
+    return success;
   }
   static handle from_cpp(la_type vec, rv_policy policy,
                          cleanup_list* cleanup) noexcept {
@@ -89,19 +95,24 @@ struct nb::detail::type_caster<la::mat<T, R, C>> {
   NB_TYPE_CASTER(la_type, const_name(la_name<la_type>::name));
 
   bool from_python(handle src, uint8_t flags, cleanup_list* cleanup) noexcept {
-    int rows = PyObject_Size(src.ptr());  // negative on failure
-    if (rows != R) return false;
-    for (int i = 0; i < R; i++) {
-      const nb::object& slice = src[i];
-      int cols = PyObject_Size(slice.ptr());  // negative on failure
-      if (cols != C) return false;
-      for (int j = 0; j < C; j++) {
-        make_caster<T> t_cast;
-        if (!t_cast.from_python(slice[j], flags, cleanup)) return false;
-        value[j][i] = t_cast.value;
+    size_t rows;
+    PyObject* temp;
+    PyObject** o = seq_get(src.ptr(), &rows, &temp);
+    bool success = o != nullptr && rows == R;
+    for (size_t i = 0; success && i < R; i++) {
+      size_t cols;
+      PyObject* row_temp;
+      PyObject** row = seq_get(o[i], &cols, &row_temp);
+      success = row != nullptr && cols == C;
+      make_caster<T> t_cast;
+      for (size_t j = 0; success && j < C; j++) {
+        success = t_cast.from_python(row[j], flags, cleanup);
+        if (success) value[j][i] = t_cast.value;
       }
+      Py_XDECREF(row_temp);
     }
-    return true;
+    Py_XDECREF(temp);
+    return success;
   }
   static handle from_cpp(la_type mat, rv_policy policy,
                          cleanup_list* cleanup) noexcept {
@@ -137,14 +148,18 @@ struct nb::detail::type_caster<std::vector<la::vec<T, N>>> {
         }
       }
     } else {
-      size_t num_vec = PyObject_Size(src.ptr());  // negative on failure
-      if (num_vec == static_cast<size_t>(-1)) return false;
-      value.resize(num_vec);
-      for (size_t i = 0; i < num_vec; i++) {
+      size_t num_vec;
+      PyObject* temp;
+      PyObject** o = seq_get(src.ptr(), &num_vec, &temp);
+      bool success = o != nullptr;
+      if (success) value.resize(num_vec);
+      for (size_t i = 0; success && i < num_vec; i++) {
         make_caster<la_type> vec_cast;
-        if (!vec_cast.from_python(src[i], flags, cleanup)) return false;
-        value[i] = vec_cast.value;
+        success = vec_cast.from_python(o[i], flags, cleanup);
+        if (success) value[i] = vec_cast.value;
       }
+      Py_XDECREF(temp);
+      return success;
     }
     return true;
   }
@@ -203,6 +218,11 @@ const std::string manifold__rotate__v =
 NB_MODULE(manifold3d, m) {
   m.doc() = "Python binding for the Manifold library.";
 
+  m.def("set_relative_precision", Quality::SetRelativePrecision,
+        nb::arg("precision"));
+
+  m.def("get_relative_precision", Quality::GetRelativePrecision);
+
   m.def("set_min_circular_angle", Quality::SetMinCircularAngle,
         nb::arg("angle"), quality__set_min_circular_angle__angle);
 
@@ -246,7 +266,7 @@ NB_MODULE(manifold3d, m) {
       .def("scale", &Manifold::Scale, nb::arg("v"), manifold__scale__v)
       .def(
           "scale",
-          [](const Manifold& self, double s) { self.Scale({s, s, s}); },
+          [](const Manifold& self, double s) { return self.Scale({s, s, s}); },
           nb::arg("s"),
           "Scale this Manifold in space. This operation can be chained. "
           "Transforms are combined and applied lazily.\n\n"
@@ -323,14 +343,14 @@ NB_MODULE(manifold3d, m) {
       .def("ray_cast", &Manifold::RayCast, nb::arg("origin"),
            nb::arg("endpoint"),
            "Cast a ray segment, returning all hits sorted by distance.")
+      .def("winding_number", &Manifold::WindingNumber, nb::arg("points"),
+           "Returns the winding number of this manifold around each of the "
+           "given points. 0 means outside, non-zero means inside.")
       .def("calculate_normals", &Manifold::CalculateNormals,
            nb::arg("normal_idx") = 0, nb::arg("min_sharp_angle") = 52.5,
            manifold__calculate_normals__normal_idx__min_sharp_angle)
       .def("smooth_by_normals", &Manifold::SmoothByNormals,
            nb::arg("normal_idx") = 0, manifold__smooth_by_normals__normal_idx)
-      .def("smooth_out", &Manifold::SmoothOut,
-           nb::arg("min_sharp_angle") = 52.5, nb::arg("min_smoothness") = 0,
-           manifold__smooth_out__min_sharp_angle__min_smoothness)
       .def("refine", &Manifold::Refine, nb::arg("n"), manifold__refine__n)
       .def("refine_to_length", &Manifold::RefineToLength, nb::arg("length"),
            manifold__refine_to_length__length)
@@ -356,11 +376,9 @@ NB_MODULE(manifold3d, m) {
           "Get the surface area of the manifold\n This is clamped to zero for "
           "a given face if they are within the Epsilon().")
       .def("original_id", &Manifold::OriginalID, manifold__original_id)
-      .def("get_tolerance", &Manifold::GetTolerance, manifold__get_tolerance)
-      .def("set_tolerance", &Manifold::SetTolerance,
-           manifold__set_tolerance__tolerance)
       .def("simplify", &Manifold::Simplify, manifold__simplify__tolerance)
-      .def("as_original", &Manifold::AsOriginal, manifold__as_original)
+      .def("as_original", &Manifold::AsOriginal, nb::arg("id") = -1,
+           manifold__as_original__id)
       .def("is_empty", &Manifold::IsEmpty, manifold__is_empty)
       .def("decompose", &Manifold::Decompose, manifold__decompose)
       .def("split", &Manifold::Split, nb::arg("cutter"),
@@ -399,43 +417,6 @@ NB_MODULE(manifold3d, m) {
           },
           "Gets the manifold bounding box as a tuple "
           "(xmin, ymin, zmin, xmax, ymax, zmax).")
-      .def_static(
-          "smooth",
-          [](const MeshGL& mesh, std::vector<size_t> sharpened_edges,
-             std::vector<double> edge_smoothness) {
-            if (sharpened_edges.size() != edge_smoothness.size()) {
-              throw std::runtime_error(
-                  "sharpened_edges.size() != edge_smoothness.size()");
-            }
-            std::vector<Smoothness> vec(sharpened_edges.size());
-            for (size_t i = 0; i < vec.size(); i++) {
-              vec[i] = {sharpened_edges[i], edge_smoothness[i]};
-            }
-            return Manifold::Smooth(mesh, vec);
-          },
-          nb::arg("mesh"), nb::arg("sharpened_edges") = nb::list(),
-          nb::arg("edge_smoothness") = nb::list(),
-          manifold__smooth__mesh_gl__sharpened_edges)
-      .def_static(
-          "smooth",
-          [](const MeshGL64& mesh, std::vector<size_t> sharpened_edges,
-             std::vector<double> edge_smoothness) {
-            if (sharpened_edges.size() != edge_smoothness.size()) {
-              throw std::runtime_error(
-                  "sharpened_edges.size() != edge_smoothness.size()");
-            }
-            std::vector<Smoothness> vec(sharpened_edges.size());
-            for (size_t i = 0; i < vec.size(); i++) {
-              vec[i] = {sharpened_edges[i], edge_smoothness[i]};
-            }
-            return Manifold::Smooth(mesh, vec);
-          },
-          nb::arg("mesh"), nb::arg("sharpened_edges") = nb::list(),
-          nb::arg("edge_smoothness") = nb::list(),
-          // note: this is not a typo, the documentation is essentially the same
-          // so we just use the 32 byte variant to avoid duplicating docstring
-          // override...
-          manifold__smooth__mesh_gl__sharpened_edges)
       .def_static("batch_boolean", &Manifold::BatchBoolean,
                   nb::arg("manifolds"), nb::arg("op"),
                   manifold__batch_boolean__manifolds__op)
@@ -733,17 +714,17 @@ NB_MODULE(manifold3d, m) {
       .def_ro("face_id", &RayHit::faceID)
       .def_ro("distance", &RayHit::distance)
       .def_ro("position", &RayHit::position)
-      .def_ro("normal", &RayHit::normal);
+      .def_ro("normal", &RayHit::normal)
+      .def_ro("crossing", &RayHit::crossing);
 
   nb::class_<ExecutionContext>(m, "ExecutionContext")
       .def(nb::init<>())
       .def("cancel", &ExecutionContext::Cancel)
       .def("cancelled", &ExecutionContext::Cancelled)
       .def("progress", &ExecutionContext::Progress)
-      // ctx-aware static factories: like Manifold.from_mesh / level_set /
-      // smooth, but run under this context so progress / cancellation are
-      // observed (these ops have no source Manifold to attach via
-      // with_context).
+      // ctx-aware static factories: like Manifold.from_mesh / level_set, but
+      // run under this context so progress / cancellation are observed (these
+      // ops have no source Manifold to attach via with_context).
       .def(
           "from_mesh",
           [](ExecutionContext& ctx, const MeshGL& mesh) {
@@ -777,45 +758,7 @@ NB_MODULE(manifold3d, m) {
           nb::arg("f"), nb::arg("bounds"), nb::arg("edgeLength"),
           nb::arg("level") = 0.0, nb::arg("tolerance") = -1,
           "Like Manifold.level_set, run under this context so the level-set "
-          "evaluation reports progress and observes cancellation.")
-      .def(
-          "smooth",
-          [](ExecutionContext& ctx, const MeshGL& mesh,
-             std::vector<size_t> sharpened_edges,
-             std::vector<double> edge_smoothness) {
-            if (sharpened_edges.size() != edge_smoothness.size()) {
-              throw std::runtime_error(
-                  "sharpened_edges.size() != edge_smoothness.size()");
-            }
-            std::vector<Smoothness> vec(sharpened_edges.size());
-            for (size_t i = 0; i < vec.size(); i++) {
-              vec[i] = {sharpened_edges[i], edge_smoothness[i]};
-            }
-            return ctx.Smooth(mesh, vec);
-          },
-          nb::arg("mesh"), nb::arg("sharpened_edges") = nb::list(),
-          nb::arg("edge_smoothness") = nb::list(),
-          "Like Manifold.smooth, run under this context so progress and "
-          "cancellation are observed.")
-      .def(
-          "smooth",
-          [](ExecutionContext& ctx, const MeshGL64& mesh,
-             std::vector<size_t> sharpened_edges,
-             std::vector<double> edge_smoothness) {
-            if (sharpened_edges.size() != edge_smoothness.size()) {
-              throw std::runtime_error(
-                  "sharpened_edges.size() != edge_smoothness.size()");
-            }
-            std::vector<Smoothness> vec(sharpened_edges.size());
-            for (size_t i = 0; i < vec.size(); i++) {
-              vec[i] = {sharpened_edges[i], edge_smoothness[i]};
-            }
-            return ctx.Smooth(mesh, vec);
-          },
-          nb::arg("mesh"), nb::arg("sharpened_edges") = nb::list(),
-          nb::arg("edge_smoothness") = nb::list(),
-          "Like Manifold.smooth, run under this context so progress and "
-          "cancellation are observed.");
+          "evaluation reports progress and observes cancellation.");
 
   nb::enum_<Manifold::Error>(m, "Error")
       .value("NoError", Manifold::Error::NoError)
@@ -835,16 +778,6 @@ NB_MODULE(manifold3d, m) {
       .value("ResultTooLarge", Manifold::Error::ResultTooLarge)
       .value("InvalidTangents", Manifold::Error::InvalidTangents)
       .value("Cancelled", Manifold::Error::Cancelled);
-
-  nb::enum_<CrossSection::FillRule>(m, "FillRule")
-      .value("EvenOdd", CrossSection::FillRule::EvenOdd,
-             "Only odd numbered sub-regions are filled.")
-      .value("NonZero", CrossSection::FillRule::NonZero,
-             "Only non-zero sub-regions are filled.")
-      .value("Positive", CrossSection::FillRule::Positive,
-             "Only sub-regions with winding counts > 0 are filled.")
-      .value("Negative", CrossSection::FillRule::Negative,
-             "Only sub-regions with winding counts < 0 are filled.");
 
   nb::enum_<CrossSection::JoinType>(m, "JoinType")
       .value("Square", CrossSection::JoinType::Square,
@@ -883,14 +816,17 @@ NB_MODULE(manifold3d, m) {
       m, "CrossSection",
       "Two-dimensional cross sections guaranteed to be without "
       "self-intersections, or overlaps between polygons (from construction "
-      "onwards). This class makes use of the "
-      "[Clipper2](http://www.angusj.com/clipper2/Docs/Overview.htm) library "
-      "for polygon clipping (boolean) and offsetting operations.")
+      "onwards). Polygon clipping (boolean) and offsetting use Manifold's own "
+      "robust floating-point predicates.")
       .def(nb::init<>(), cross_section__cross_section)
-      .def(nb::init<std::vector<std::vector<vec2>>, CrossSection::FillRule>(),
-           nb::arg("contours"),
-           nb::arg("fillrule") = CrossSection::FillRule::Positive,
-           cross_section__cross_section__contours__fillrule)
+      .def(nb::init<std::vector<std::vector<vec2>>>(), nb::arg("contours"),
+           cross_section__cross_section__contours)
+      .def_static("even_odd",
+                  nb::overload_cast<const Polygons&>(&CrossSection::EvenOdd),
+                  nb::arg("contours"), cross_section__even_odd__contours)
+      .def_static("non_zero",
+                  nb::overload_cast<const Polygons&>(&CrossSection::NonZero),
+                  nb::arg("contours"), cross_section__non_zero__contours)
       .def("area", &CrossSection::Area, cross_section__area)
       .def("num_vert", &CrossSection::NumVert, cross_section__num_vert)
       .def("num_contour", &CrossSection::NumContour, cross_section__num_contour)
@@ -911,7 +847,7 @@ NB_MODULE(manifold3d, m) {
            cross_section__scale__scale)
       .def(
           "scale",
-          [](const CrossSection& self, double s) { self.Scale({s, s}); },
+          [](const CrossSection& self, double s) { return self.Scale({s, s}); },
           nb::arg("s"),
           "Scale this CrossSection in space. This operation can be chained. "
           "Transforms are combined and applied lazily."
@@ -947,8 +883,8 @@ NB_MODULE(manifold3d, m) {
             });
           },
           nb::arg("warp_func"), cross_section__warp_batch__warp_func)
-      .def("simplify", &CrossSection::Simplify, nb::arg("epsilon") = 1e-6,
-           cross_section__simplify__epsilon)
+      .def("simplify", &CrossSection::Simplify, nb::arg("tolerance") = 0,
+           cross_section__simplify__tolerance)
       .def(
           "offset", &CrossSection::Offset, nb::arg("delta"),
           nb::arg("join_type") = CrossSection::JoinType::Round,
@@ -972,8 +908,6 @@ NB_MODULE(manifold3d, m) {
       .def_static("batch_boolean", &CrossSection::BatchBoolean,
                   nb::arg("cross_sections"), nb::arg("op"),
                   cross_section__batch_boolean__cross_sections__op)
-      .def_static("compose", &CrossSection::Compose, nb::arg("cross_sections"),
-                  cross_section__compose__cross_sections)
       .def("to_polygons", &CrossSection::ToPolygons, cross_section__to_polygons)
       .def(
           "extrude",

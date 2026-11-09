@@ -19,13 +19,13 @@
 //     MinGap is built on)
 
 #include "../src/tri_dist.h"
+#include "gtest/gtest.h"
 #include "manifold/manifold.h"
 #include "samples.h"
-#include "test.h"
 
 using namespace manifold;
 
-TEST(Manifold, RayCastHitCube) {
+TEST(Measurement, RayCastHitCube) {
   // Ray through center along Z — also tests watertight shared edge at (0,0)
   Manifold cube = Manifold::Cube(vec3(1), true);
 
@@ -37,14 +37,16 @@ TEST(Manifold, RayCastHitCube) {
   // Bottom face normal should point -Z, top +Z
   EXPECT_FLOAT_EQ(hits[0].normal.z, -1.0);
   EXPECT_FLOAT_EQ(hits[1].normal.z, 1.0);
+  EXPECT_EQ(hits[0].crossing, 1);
+  EXPECT_EQ(hits[1].crossing, -1);
 }
 
-TEST(Manifold, RayCastMiss) {
+TEST(Measurement, RayCastMiss) {
   Manifold cube = Manifold::Cube(vec3(1), true);
   EXPECT_EQ(cube.RayCast(vec3(10, 10, -5), vec3(10, 10, 5)).size(), 0);
 }
 
-TEST(Manifold, RayCastDiagonal) {
+TEST(Measurement, RayCastDiagonal) {
   // Diagonal ray — not axis-aligned
   Manifold cube = Manifold::Cube(vec3(1), true);
 
@@ -53,12 +55,12 @@ TEST(Manifold, RayCastDiagonal) {
   EXPECT_FLOAT_EQ(hits[0].position.z, -0.5);
 }
 
-TEST(Manifold, RayCastBehindOrigin) {
+TEST(Measurement, RayCastBehindOrigin) {
   Manifold cube = Manifold::Cube(vec3(1), true);
   EXPECT_EQ(cube.RayCast(vec3(0, 0, 5), vec3(0, 0, 10)).size(), 0);
 }
 
-TEST(Manifold, RayCastSphere) {
+TEST(Measurement, RayCastSphere) {
   Manifold sphere = Manifold::Sphere(1.0, 128);
 
   auto hits = sphere.RayCast(vec3(0, 0, -5), vec3(0, 0, 5));
@@ -68,7 +70,7 @@ TEST(Manifold, RayCastSphere) {
   EXPECT_EQ(sphere.RayCast(vec3(2, 2, -5), vec3(2, 2, 5)).size(), 0);
 }
 
-TEST(Manifold, RayCastTwoCubes) {
+TEST(Measurement, RayCastTwoCubes) {
   Manifold c1 = Manifold::Cube(vec3(1), true);
   Manifold c2 = Manifold::Cube(vec3(1), true).Translate(vec3(0, 0, 5));
   Manifold both = c1 + c2;
@@ -81,12 +83,12 @@ TEST(Manifold, RayCastTwoCubes) {
   EXPECT_FLOAT_EQ(hits[3].position.z, 5.5);
 }
 
-TEST(Manifold, RayCastEmpty) {
+TEST(Measurement, RayCastEmpty) {
   Manifold empty;
   EXPECT_EQ(empty.RayCast(vec3(0, 0, -5), vec3(0, 0, 5)).size(), 0);
 }
 
-TEST(Manifold, RayCastAlongX) {
+TEST(Measurement, RayCastAlongX) {
   Manifold cube = Manifold::Cube(vec3(1), true);
 
   auto hits = cube.RayCast(vec3(-5, 0, 0), vec3(5, 0, 0));
@@ -94,7 +96,7 @@ TEST(Manifold, RayCastAlongX) {
   EXPECT_FLOAT_EQ(hits[0].position.x, -0.5);
 }
 
-TEST(Manifold, RayCastAlongY) {
+TEST(Measurement, RayCastAlongY) {
   Manifold cube = Manifold::Cube(vec3(1), true);
 
   auto hits = cube.RayCast(vec3(0, -5, 0), vec3(0, 5, 0));
@@ -102,12 +104,12 @@ TEST(Manifold, RayCastAlongY) {
   EXPECT_FLOAT_EQ(hits[0].position.y, -0.5);
 }
 
-TEST(Manifold, RayCastZeroLength) {
+TEST(Measurement, RayCastZeroLength) {
   Manifold cube = Manifold::Cube(vec3(1), true);
   EXPECT_EQ(cube.RayCast(vec3(0, 0, 0), vec3(0, 0, 0)).size(), 0);
 }
 
-TEST(Manifold, RayCastWatertightVertex) {
+TEST(Measurement, RayCastWatertightVertex) {
   // Ray exactly through a vertex. Symbolic perturbation should assign
   // the hit to exactly one triangle per face.
   Manifold cube = Manifold::Cube(vec3(1), true);
@@ -117,7 +119,7 @@ TEST(Manifold, RayCastWatertightVertex) {
   EXPECT_FLOAT_EQ(hits[0].position.z, -0.5);
 }
 
-TEST(Manifold, RayCastSilhouetteEdge) {
+TEST(Measurement, RayCastSilhouetteEdge) {
   // Ray at the silhouette edge should return 0 or 2 hits, never 1.
   Manifold cube = Manifold::Cube(vec3(1), true);
 
@@ -125,7 +127,61 @@ TEST(Manifold, RayCastSilhouetteEdge) {
   EXPECT_TRUE(hits.size() == 0 || hits.size() == 2);
 }
 
-TEST(Properties, MinGapCubeCube) {
+TEST(Measurement, RayCastCrossingMatchesWinding) {
+  // The crossings along a ray must account for the change in winding number
+  // between its ends. Aim rays at every vertex of a rotated cube, where
+  // dot(normal, direction) is least reliable.
+  const Manifold cube = Manifold::Cube(vec3(1.0), true).Rotate(30, 40, 50);
+  const MeshGL64 mesh = cube.GetMeshGL64();
+  for (size_t v = 0; v < mesh.NumVert(); ++v) {
+    const double* p = &mesh.vertProperties[mesh.numProp * v];
+    const vec3 vert(p[0], p[1], p[2]);
+    for (int k = 0; k < 16; ++k) {
+      const double theta = 0.7 * k;
+      const vec3 dir =
+          la::normalize(vec3(cos(theta), sin(theta), 0.5 * sin(3 * theta)));
+      for (const double reach : {0.0, 1.0, 2.0}) {
+        const vec3 origin = vert - 2.0 * dir;
+        const vec3 endpoint = vert + reach * dir;
+        const std::vector<int> w = cube.WindingNumber({origin, endpoint});
+        int sum = 0;
+        for (const RayHit& hit : cube.RayCast(origin, endpoint)) {
+          EXPECT_TRUE(hit.crossing == 1 || hit.crossing == -1);
+          sum += hit.crossing;
+        }
+        EXPECT_EQ(w[0] + sum, w[1])
+            << "vert " << v << " dir " << k << " reach " << reach;
+      }
+    }
+  }
+}
+
+TEST(Measurement, RayCastTiesSortedByFaceID) {
+  // A ray through the same vertex of a row of rotated cubes grazes each one,
+  // giving a pair of hits at equal distance per cube. With more than 16 hits
+  // std::sort is no longer stable in practice, so ties must be ordered by
+  // faceID explicitly.
+  const Manifold cube = Manifold::Cube(vec3(1.0), true).Rotate(30, 40, 50);
+  std::vector<Manifold> cubes;
+  for (int i = 0; i < 20; ++i) cubes.push_back(cube.Translate({3.0 * i, 0, 0}));
+  const Manifold row = Manifold::BatchBoolean(cubes, OpType::Add);
+  const MeshGL64 mesh = cube.GetMeshGL64();
+  int ties = 0;
+  for (size_t v = 0; v < mesh.NumVert(); ++v) {
+    const double* p = &mesh.vertProperties[mesh.numProp * v];
+    const vec3 vert(p[0], p[1], p[2]);
+    const std::vector<RayHit> hits =
+        row.RayCast(vert - vec3(3, 0, 0), vert + vec3(60, 0, 0));
+    for (size_t i = 1; i < hits.size(); ++i) {
+      if (hits[i - 1].distance != hits[i].distance) continue;
+      ++ties;
+      EXPECT_LT(hits[i - 1].faceID, hits[i].faceID) << "vert " << v;
+    }
+  }
+  EXPECT_GT(ties, 0);
+}
+
+TEST(Measurement, MinGapCubeCube) {
   auto a = Manifold::Cube();
   auto b = Manifold::Cube().Translate({2, 2, 0});
 
@@ -134,7 +190,7 @@ TEST(Properties, MinGapCubeCube) {
   EXPECT_FLOAT_EQ(distance, sqrt(2));
 }
 
-TEST(Properties, MinGapCubeCube2) {
+TEST(Measurement, MinGapCubeCube2) {
   auto a = Manifold::Cube();
   auto b = Manifold::Cube().Translate({3, 3, 0});
 
@@ -143,7 +199,7 @@ TEST(Properties, MinGapCubeCube2) {
   EXPECT_FLOAT_EQ(distance, sqrt(2) * 2);
 }
 
-TEST(Properties, MinGapCubeSphereOverlapping) {
+TEST(Measurement, MinGapCubeSphereOverlapping) {
   auto a = Manifold::Cube();
   auto b = Manifold::Sphere(1);
 
@@ -152,7 +208,7 @@ TEST(Properties, MinGapCubeSphereOverlapping) {
   EXPECT_FLOAT_EQ(distance, 0);
 }
 
-TEST(Properties, MinGapSphereSphere) {
+TEST(Measurement, MinGapSphereSphere) {
   auto a = Manifold::Sphere(1);
   auto b = Manifold::Sphere(1).Translate({2, 2, 0});
 
@@ -161,7 +217,7 @@ TEST(Properties, MinGapSphereSphere) {
   EXPECT_FLOAT_EQ(distance, 2 * sqrt(2) - 2);
 }
 
-TEST(Properties, MinGapSphereSphereOutOfBounds) {
+TEST(Measurement, MinGapSphereSphereOutOfBounds) {
   auto a = Manifold::Sphere(1);
   auto b = Manifold::Sphere(1).Translate({2, 2, 0});
 
@@ -170,7 +226,7 @@ TEST(Properties, MinGapSphereSphereOutOfBounds) {
   EXPECT_FLOAT_EQ(distance, 0.8);
 }
 
-TEST(Properties, MinGapClosestPointOnEdge) {
+TEST(Measurement, MinGapClosestPointOnEdge) {
   auto a = Manifold::Cube({1, 1, 1}, true).Rotate(0, 0, 45);
   auto b =
       Manifold::Cube({1, 1, 1}, true).Rotate(0, 45, 0).Translate({2, 0, 0});
@@ -180,7 +236,7 @@ TEST(Properties, MinGapClosestPointOnEdge) {
   EXPECT_FLOAT_EQ(distance, 2 - sqrt(2));
 }
 
-TEST(Properties, MinGapClosestPointOnTriangleFace) {
+TEST(Measurement, MinGapClosestPointOnTriangleFace) {
   auto a = Manifold::Cube();
   auto b = Manifold::Cube().Scale({10, 10, 10}).Translate({2, -5, -1});
 
@@ -189,7 +245,7 @@ TEST(Properties, MinGapClosestPointOnTriangleFace) {
   EXPECT_FLOAT_EQ(distance, 1);
 }
 
-TEST(Properties, MingapAfterTransformations) {
+TEST(Measurement, MingapAfterTransformations) {
   auto a = Manifold::Sphere(1, 512).Rotate(30, 30, 30);
   auto b =
       Manifold::Sphere(1, 512).Scale({3, 1, 1}).Rotate(0, 90, 45).Translate(
@@ -200,8 +256,7 @@ TEST(Properties, MingapAfterTransformations) {
   ASSERT_NEAR(distance, 1, 0.001);
 }
 
-#ifdef MANIFOLD_CROSS_SECTION
-TEST(Properties, MingapStretchyBracelet) {
+TEST(Measurement, MingapStretchyBracelet) {
   auto a = StretchyBracelet();
   auto b = StretchyBracelet().Translate({0, 0, 20});
 
@@ -209,9 +264,8 @@ TEST(Properties, MingapStretchyBracelet) {
 
   ASSERT_NEAR(distance, 5, 0.001);
 }
-#endif
 
-TEST(Properties, MinGapAfterTransformationsOutOfBounds) {
+TEST(Measurement, MinGapAfterTransformationsOutOfBounds) {
   auto a = Manifold::Sphere(1, 512).Rotate(30, 30, 30);
   auto b =
       Manifold::Sphere(1, 512).Scale({3, 1, 1}).Rotate(0, 90, 45).Translate(
@@ -222,7 +276,7 @@ TEST(Properties, MinGapAfterTransformationsOutOfBounds) {
   ASSERT_NEAR(distance, 0.95, 0.001);
 }
 
-TEST(Properties, TriangleDistanceClosestPointsOnVertices) {
+TEST(Measurement, TriangleDistanceClosestPointsOnVertices) {
   std::array<vec3, 3> p = {vec3{-1, 0, 0}, vec3{1, 0, 0}, vec3{0, 1, 0}};
 
   std::array<vec3, 3> q = {vec3{2, 0, 0}, vec3{4, 0, 0}, vec3{3, 1, 0}};
@@ -232,7 +286,7 @@ TEST(Properties, TriangleDistanceClosestPointsOnVertices) {
   EXPECT_FLOAT_EQ(distance, 1);
 }
 
-TEST(Properties, TriangleDistanceClosestPointOnEdge) {
+TEST(Measurement, TriangleDistanceClosestPointOnEdge) {
   std::array<vec3, 3> p = {vec3{-1, 0, 0}, vec3{1, 0, 0}, vec3{0, 1, 0}};
 
   std::array<vec3, 3> q = {vec3{-1, 2, 0}, vec3{1, 2, 0}, vec3{0, 3, 0}};
@@ -242,7 +296,7 @@ TEST(Properties, TriangleDistanceClosestPointOnEdge) {
   EXPECT_FLOAT_EQ(distance, 1);
 }
 
-TEST(Properties, TriangleDistanceClosestPointOnEdge2) {
+TEST(Measurement, TriangleDistanceClosestPointOnEdge2) {
   std::array<vec3, 3> p = {vec3{-1, 0, 0}, vec3{1, 0, 0}, vec3{0, 1, 0}};
 
   std::array<vec3, 3> q = {vec3{1, 1, 0}, vec3{3, 1, 0}, vec3{2, 2, 0}};
@@ -252,7 +306,7 @@ TEST(Properties, TriangleDistanceClosestPointOnEdge2) {
   EXPECT_FLOAT_EQ(distance, 0.5);
 }
 
-TEST(Properties, TriangleDistanceClosestPointOnFace) {
+TEST(Measurement, TriangleDistanceClosestPointOnFace) {
   std::array<vec3, 3> p = {vec3{-1, 0, 0}, vec3{1, 0, 0}, vec3{0, 1, 0}};
 
   std::array<vec3, 3> q = {vec3{-1, 2, -0.5}, vec3{1, 2, -0.5},
@@ -263,7 +317,7 @@ TEST(Properties, TriangleDistanceClosestPointOnFace) {
   EXPECT_FLOAT_EQ(distance, 1);
 }
 
-TEST(Properties, TriangleDistanceOverlapping) {
+TEST(Measurement, TriangleDistanceOverlapping) {
   std::array<vec3, 3> p = {vec3{-1, 0, 0}, vec3{1, 0, 0}, vec3{0, 1, 0}};
 
   std::array<vec3, 3> q = {vec3{-1, 0, 0}, vec3{1, 0.5, 0}, vec3{0, 1, 0}};
@@ -271,4 +325,58 @@ TEST(Properties, TriangleDistanceOverlapping) {
   float distance = DistanceTriangleTriangleSquared(p, q);
 
   EXPECT_FLOAT_EQ(distance, 0);
+}
+
+// A tall box where the query point is far below the top face. The +Z ray from
+// the point must reach the top face even though it's well outside the point's
+// 3D bounding-box in Z. This exercises the XY-projected collider query.
+TEST(Measurement, WindingTallBox) {
+  Manifold box = Manifold::Cube(vec3(1, 1, 10), true);  // z in [-5, 5]
+  const auto w =
+      box.WindingNumber({{0, 0, -4}, {0, 0, 0}, {0, 0, 6}, {0, 0, -6}});
+  EXPECT_EQ(w[0], 1);  // inside, near bottom
+  EXPECT_EQ(w[1], 1);  // center
+  EXPECT_EQ(w[2], 0);  // above
+  EXPECT_EQ(w[3], 0);  // below
+}
+
+TEST(Measurement, WindingEmpty) {
+  const auto w = Manifold{}.WindingNumber({{0, 0, 0}});
+  ASSERT_EQ(w.size(), 1u);
+  EXPECT_EQ(w[0], 0);
+}
+
+// Watertight winding across shared cube edges and vertices - must be exactly
+// 0 or 1, never 2 from double-counting.
+TEST(Measurement, WindingWatertight) {
+  Manifold cube = Manifold::Cube(vec3(1), true);
+  const auto w =
+      cube.WindingNumber({{0.4999, 0.4999, 0}, {0.5, 0, 0}, {0, 0, 0}});
+  EXPECT_TRUE(w[0] == 0 || w[0] == 1);  // near shared vertex
+  EXPECT_TRUE(w[1] == 0 || w[1] == 1);  // silhouette edge
+  EXPECT_EQ(w[2], 1);                   // center
+}
+
+// Hollow shell (sphere - sphere): cavity center must return winding 0, wall
+// point 1, outside 0. Proves real winding number, not just ray parity.
+TEST(Measurement, WindingHollowShell) {
+  Manifold shell = Manifold::Sphere(2, 32) - Manifold::Sphere(1, 32);
+  const auto w = shell.WindingNumber({{0, 0, 0}, {0, 0, 1.5}, {0, 0, 3}});
+  EXPECT_EQ(w[0], 0);  // cavity
+  EXPECT_EQ(w[1], 1);  // wall
+  EXPECT_EQ(w[2], 0);  // outside
+}
+
+// Cross-check: winding != 0 agrees with RayCast hit-count parity.
+TEST(Measurement, WindingMatchesRayCastParity) {
+  Manifold cube = Manifold::Cube(vec3(1), true);
+  const std::vector<vec3> pts = {{0, 0, 0}, {0.3, 0.2, 0.1}, {0.5, 0.5, 0.5},
+                                 {0, 0, 1}, {0, 0, 2},       {-1, 0, 0}};
+  const auto winding = cube.WindingNumber(pts);
+  for (size_t i = 0; i < pts.size(); ++i) {
+    const vec3& p = pts[i];
+    const size_t hits = cube.RayCast(p, {p.x, p.y, p.z + 1e6}).size();
+    EXPECT_EQ(winding[i] != 0, hits % 2 == 1)
+        << "mismatch at (" << p.x << "," << p.y << "," << p.z << ")";
+  }
 }

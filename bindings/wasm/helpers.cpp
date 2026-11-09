@@ -107,21 +107,19 @@ val Merge(const val& mesh) {
   return out;
 }
 
-Manifold Smooth(const val& mesh,
-                const std::vector<Smoothness>& sharpenedEdges = {}) {
-  return Manifold::Smooth(MeshJS2GL(mesh), sharpenedEdges);
-}
-
 }  // namespace js
 
 namespace cross_js {
-CrossSection OfPolygons(std::vector<std::vector<vec2>> polygons,
-                        int fill_rule) {
-  auto fr = fill_rule == 0   ? CrossSection::FillRule::EvenOdd
-            : fill_rule == 1 ? CrossSection::FillRule::NonZero
-            : fill_rule == 2 ? CrossSection::FillRule::Positive
-                             : CrossSection::FillRule::Negative;
-  return CrossSection(polygons, fr);
+CrossSection OfPolygons(std::vector<std::vector<vec2>> polygons) {
+  return CrossSection(polygons);
+}
+
+CrossSection EvenOdd(std::vector<std::vector<vec2>> polygons) {
+  return CrossSection::EvenOdd(polygons);
+}
+
+CrossSection NonZero(std::vector<std::vector<vec2>> polygons) {
+  return CrossSection::NonZero(polygons);
 }
 
 CrossSection Union(const CrossSection& a, const CrossSection& b) {
@@ -257,11 +255,6 @@ Manifold LevelSet(uintptr_t funcPtr, Box bounds, double edgeLength,
 // (first arg is the receiver).
 Manifold ExecutionContextFromMesh(ExecutionContext& ctx, const val& mesh) {
   return ctx.FromMeshGL(js::MeshJS2GL(mesh));
-}
-
-Manifold ExecutionContextSmooth(ExecutionContext& ctx, const val& mesh,
-                                const std::vector<Smoothness>& sharpenedEdges) {
-  return ctx.Smooth(js::MeshJS2GL(mesh), sharpenedEdges);
 }
 
 Manifold ExecutionContextLevelSet(ExecutionContext& ctx, uintptr_t funcPtr,

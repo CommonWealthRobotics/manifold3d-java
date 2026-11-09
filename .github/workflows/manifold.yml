@@ -24,22 +24,16 @@ jobs:
         shared: [OFF, ON]
     runs-on: windows-2025
     steps:
-    - uses: actions/checkout@v6
-    - uses: lukka/get-cmake@v4.2.3
+    - uses: actions/checkout@v7
+    - uses: lukka/get-cmake@v4.4.2
       with:
-        cmakeVersion: 4.0.2
+        cmakeVersion: 4.3.3
     - &clone-tbb
       uses: ./.github/actions/git-clone
       with:
         name: tbb
         url: https://github.com/oneapi-src/oneTBB.git
         tag: v2022.3.0
-    - &clone-clipper2
-      uses: ./.github/actions/git-clone
-      with:
-        name: clipper2
-        url: https://github.com/AngusJohnson/Clipper2.git
-        rev: 46f639177fe418f9689e8ddb74f08a870c71f5b4
     - &clone-nanobind
       uses: ./.github/actions/git-clone
       with:
@@ -66,7 +60,6 @@ jobs:
           -DMANIFOLD_ASSERT=ON \
           -DMANIFOLD_PAR=${{matrix.parallelization}} \
           -DFETCHCONTENT_SOURCE_DIR_TBB=tbb \
-          -DFETCHCONTENT_SOURCE_DIR_CLIPPER2=clipper2 \
           -DFETCHCONTENT_SOURCE_DIR_NANOBIND=nanobind \
           -DFETCHCONTENT_SOURCE_DIR_GOOGLETEST=gtest \
           -A x64 -B build
@@ -93,65 +86,81 @@ jobs:
         bash ./scripts/export_determinism_meshes.sh build/bin/Release ./manifold_test.exe meshes-windows
     - name: Upload determinism meshes (Windows)
       if: matrix.parallelization == 'OFF' && matrix.shared == 'OFF'
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: meshes-windows
         path: meshes-windows/
   build:
-    name: GCC ${{matrix.gcc}} (CrossSection:${{matrix.cross_section}}, TBB:${{matrix.parallelization}})
+    name: ${{matrix.name}}
     timeout-minutes: 45
     strategy:
       matrix:
-        cross_section: [ON]
-        parallelization: [OFF, ON]
-        os: [ubuntu-24.04]
-        gcc: [13, 14]
         include:
-          - cross_section: OFF
-            parallelization: ON
-            os: ubuntu-24.04
-            gcc: 14
-          - cross_section: ON
+          - name: GCC 11 (TBB:ON)
+            gcc: 11
             parallelization: ON
             os: ubuntu-22.04
-            gcc: 11
+            std: 17
+          - name: GCC 13 (TBB:OFF)
+            gcc: 13
+            parallelization: OFF
+            os: ubuntu-24.04
+            std: 17
+          - name: GCC 13 (TBB:ON)
+            gcc: 13
+            parallelization: ON
+            os: ubuntu-24.04
+            std: 17
+          - name: GCC 14 (TBB:OFF)
+            gcc: 14
+            parallelization: OFF
+            os: ubuntu-24.04
+            std: 17
+          - name: GCC 14 (TBB:ON)
+            gcc: 14
+            parallelization: ON
+            os: ubuntu-24.04
+            std: 17
+          # One strict lane at C++20, to catch what it deprecates or redefines.
+          - name: GCC 14 (TBB:ON, C++20)
+            gcc: 14
+            parallelization: ON
+            os: ubuntu-24.04
+            std: 20
     runs-on: ${{ matrix.os }}
     env:
       CC: gcc-${{ matrix.gcc }}
       CXX: g++-${{ matrix.gcc }}
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
     - &setup-python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v7
       with:
         python-version: '3.x'
         cache: 'pip'
     - run: pip install -U trimesh pytest
     - name: Install apt packages
-      uses: awalsh128/cache-apt-pkgs-action@v1.6.0
+      uses: awalsh128/cache-apt-pkgs-action@v1
       with:
         packages: libgtest-dev libassimp-dev git libtbb-dev pkg-config cmake
-    - *clone-clipper2
     - *clone-nanobind
 
     - name: Build
       run: |
         cmake \
           -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+          -DCMAKE_CXX_STANDARD=${{matrix.std}} \
           -DBUILD_SHARED_LIBS=ON \
           -DMANIFOLD_STRICT=ON \
           -DMANIFOLD_PYBIND=ON \
           -DMANIFOLD_DEBUG=ON \
           -DMANIFOLD_ASSERT=ON \
-          -DFETCHCONTENT_SOURCE_DIR_CLIPPER2=clipper2 \
           -DFETCHCONTENT_SOURCE_DIR_NANOBIND=nanobind \
-          -DMANIFOLD_CROSS_SECTION=${{matrix.cross_section}} \
           -DASSIMP_ENABLE=ON \
           -DMANIFOLD_PAR=${{matrix.parallelization}} \
           . -B build
         cmake --build build
     - name: Test
-      if: matrix.cross_section == 'ON'
       run: |
         ./build/test/manifold_test
         # python tests
@@ -166,7 +175,7 @@ jobs:
         bash ./scripts/export_determinism_meshes.sh build/test ./manifold_test meshes-linux
     - name: Upload determinism meshes (Linux)
       if: matrix.parallelization == 'OFF' && matrix.gcc == 14 && matrix.os == 'ubuntu-24.04'
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: meshes-linux
         path: meshes-linux/
@@ -180,9 +189,9 @@ jobs:
     timeout-minutes: 20
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
     - name: Install apt packages
-      uses: awalsh128/cache-apt-pkgs-action@v1.6.0
+      uses: awalsh128/cache-apt-pkgs-action@v1
       with:
         packages: cmake clang libgtest-dev
     - name: Configure + build with MANIFOLD_NO_IOSTREAM=ON, MANIFOLD_TEST=ON
@@ -192,7 +201,6 @@ jobs:
           -DCMAKE_C_COMPILER=clang \
           -DCMAKE_CXX_COMPILER=clang++ \
           -DMANIFOLD_NO_IOSTREAM=ON \
-          -DMANIFOLD_USE_BUILTIN_CLIPPER2=ON \
           -DMANIFOLD_STRICT=ON \
           -DMANIFOLD_TEST=ON \
           -DMANIFOLD_PYBIND=OFF \
@@ -203,11 +211,52 @@ jobs:
     - name: Verify conflict guard fires (NO_IOSTREAM + DEBUG)
       run: |
         if cmake -DMANIFOLD_NO_IOSTREAM=ON -DMANIFOLD_DEBUG=ON \
-                 -DMANIFOLD_USE_BUILTIN_CLIPPER2=ON \
                  . -B /tmp/conflict-debug 2>&1; then
           echo "FAIL: configure should have failed for NO_IOSTREAM + DEBUG"
           exit 1
         fi
+
+  build_libcxx_hardened:
+    name: Libc++ hardened (clang, EXTENSIVE, TBB:${{matrix.parallelization}})
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        parallelization: [OFF, ON]
+    runs-on: ubuntu-latest
+    env:
+      # Match nixpkgs hardening profile (the trigger for #1735), plus
+      # EXTENSIVE checks to catch latent preconditions beyond bounds.
+      CXXFLAGS: "-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE -stdlib=libc++"
+      LDFLAGS: "-stdlib=libc++"
+    steps:
+    - uses: actions/checkout@v7
+    - name: Install apt packages
+      uses: awalsh128/cache-apt-pkgs-action@v1
+      with:
+        # tbb/gtest are built from the cloned sources below under the
+        # lane's libc++ flags so they match the test binary's ABI; the distro
+        # packages are libstdc++.
+        packages: cmake clang libc++-dev libc++abi-dev
+    - *clone-tbb
+    - *clone-gtest
+    - name: Configure + build with libc++ and EXTENSIVE hardening
+      run: |
+        cmake \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_C_COMPILER=clang \
+          -DCMAKE_CXX_COMPILER=clang++ \
+          -DMANIFOLD_PAR=${{matrix.parallelization}} \
+          -DMANIFOLD_STRICT=ON \
+          -DMANIFOLD_TEST=ON \
+          -DMANIFOLD_PYBIND=OFF \
+          -DMANIFOLD_USE_BUILTIN_TBB=ON \
+          -DFETCHCONTENT_SOURCE_DIR_TBB=tbb \
+          -DFETCHCONTENT_SOURCE_DIR_GOOGLETEST=gtest \
+          . -B build
+        cmake --build build
+    - name: Run manifold_test
+      run: ./build/test/manifold_test
 
   build_gcc_codecov:
     name: code coverage
@@ -221,19 +270,11 @@ jobs:
       CXX: g++-14
     runs-on: ubuntu-24.04
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
     - name: Install apt packages
-      uses: awalsh128/cache-apt-pkgs-action@v1.6.0
+      uses: awalsh128/cache-apt-pkgs-action@v1
       with:
         packages: libgtest-dev git libtbb-dev pkg-config lcov cmake
-    - *clone-clipper2
-    - name: build clipper2
-      run: |
-        cd clipper2/CPP
-        cmake -DCMAKE_BUILD_TYPE=Release . -B build
-        cmake --build build
-        sudo cmake --install build
-
     - name: build
       run: |
         cmake \
@@ -243,7 +284,6 @@ jobs:
           -DMANIFOLD_PYBIND=OFF \
           -DMANIFOLD_DEBUG=ON \
           -DMANIFOLD_ASSERT=ON \
-          -DMANIFOLD_CROSS_SECTION=ON \
           -DMANIFOLD_PAR=${{matrix.parallelization}} \
           -DCODE_COVERAGE=ON \
           . -B build
@@ -256,7 +296,7 @@ jobs:
         lcov --capture --gcov-tool gcov-14 --ignore-errors mismatch --directory . --output-file ./code_coverage_test.info
         lcov --add-tracefile ./code_coverage_init.info --add-tracefile ./code_coverage_test.info --output-file ./code_coverage_total.info
         lcov --extract ./code_coverage_total.info "/*/manifold/src/*" --output-file ./code_coverage.info
-    - uses: codecov/codecov-action@v5
+    - uses: codecov/codecov-action@v7
       with:
         disable_search: true
         files: build/code_coverage.info
@@ -274,23 +314,22 @@ jobs:
         parallelization: [OFF, ON]
         debug: [OFF, ON]
     steps:
-    - uses: actions/checkout@v6
-    - uses: actions/setup-node@v6
+    - uses: actions/checkout@v7
+    - uses: actions/setup-node@v7
       with:
-        node-version: 25
+        node-version: 24
         cache: 'npm'
         cache-dependency-path: bindings/**/package-lock.json
     - name: Install apt packages
-      uses: awalsh128/cache-apt-pkgs-action@v1.6.0
+      uses: awalsh128/cache-apt-pkgs-action@v1
       with:
         packages: cmake
         version: 1
     - name: Setup EMSDK
-      uses: mymindstorm/setup-emsdk@v14
+      uses: mymindstorm/setup-emsdk@v16
       with:
         version: 5.0.2
     - *clone-tbb
-    - *clone-clipper2
     - *clone-gtest
     - name: Build WASM ${{matrix.parallelization}}
       run: |
@@ -302,7 +341,6 @@ jobs:
           -DMANIFOLD_DEBUG=${{matrix.debug}} \
           -DMANIFOLD_ASSERT=${{matrix.debug}} \
           -DFETCHCONTENT_SOURCE_DIR_TBB=tbb \
-          -DFETCHCONTENT_SOURCE_DIR_CLIPPER2=clipper2 \
           -DFETCHCONTENT_SOURCE_DIR_GOOGLETEST=gtest \
           . -B build
         cd build
@@ -355,7 +393,7 @@ jobs:
         npm run docs
         npm run public
     - name: Upload manifoldCAD editor, examples and documentation
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       if: github.event_name == 'push' && matrix.parallelization == 'OFF' && matrix.debug == 'OFF'
       with:
         name: wasmpublic
@@ -363,7 +401,7 @@ jobs:
         retention-days: 90
         overwrite: true
     - name: Upload complete wasm build.
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       if: github.event_name == 'push' && matrix.parallelization == 'OFF' && matrix.debug == 'OFF'
       with:
         name: wasm
@@ -379,10 +417,10 @@ jobs:
         os: [ubuntu-24.04, macos-latest]
     runs-on: ${{matrix.os}}
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
     - name: Install apt packages
       if: matrix.os == 'ubuntu-24.04'
-      uses: awalsh128/cache-apt-pkgs-action@v1.6.0
+      uses: awalsh128/cache-apt-pkgs-action@v1
       with:
         packages: libgtest-dev clang cmake
         version: 1
@@ -390,7 +428,6 @@ jobs:
       if: matrix.os == 'macos-latest'
       run: |
         brew install googletest cmake
-    - *clone-clipper2
     - uses: ./.github/actions/git-clone
       with:
         name: fuzztest
@@ -405,50 +442,15 @@ jobs:
           -DMANIFOLD_FUZZ=ON \
           -DMANIFOLD_PYBIND=OFF \
           -DCMAKE_CXX_COMPILER=clang++ \
-          -DMANIFOLD_CROSS_SECTION=ON \
-          -DFETCHCONTENT_SOURCE_DIR_CLIPPER2=clipper2 \
           -DFETCHCONTENT_SOURCE_DIR_FUZZTEST=fuzztest \
           . -B build
         ASAN_OPTIONS=detect_container_overflow=0 cmake --build build
 
-  build_sanitizer:
-    name: Sanitizer (ASan+UBSan)
-    timeout-minutes: 30
-    runs-on: ubuntu-24.04
-    steps:
-    - uses: actions/checkout@v6
-    - name: Install apt packages
-      uses: awalsh128/cache-apt-pkgs-action@v1.6.0
-      with:
-        packages: libgtest-dev libtbb-dev clang cmake
-        version: 1
-    - *clone-clipper2
-    - name: Build (clang + asan/ubsan)
-      run: |
-        cmake \
-          -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-          -DBUILD_SHARED_LIBS=ON \
-          -DMANIFOLD_STRICT=ON \
-          -DMANIFOLD_PYBIND=OFF \
-          -DMANIFOLD_DEBUG=ON \
-          -DMANIFOLD_ASSERT=ON \
-          -DMANIFOLD_CROSS_SECTION=ON \
-          -DMANIFOLD_PAR=OFF \
-          -DCMAKE_C_COMPILER=clang \
-          -DCMAKE_CXX_COMPILER=clang++ \
-          -DCMAKE_C_FLAGS="-fsanitize=address,undefined" \
-          -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined" \
-          -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined" \
-          -DCMAKE_SHARED_LINKER_FLAGS="-fsanitize=address,undefined" \
-          -DFETCHCONTENT_SOURCE_DIR_CLIPPER2=clipper2 \
-          . -B build
-        cmake --build build
-    - name: Test (small sanitizer subset)
-      env:
-        ASAN_OPTIONS: detect_container_overflow=0
-        UBSAN_OPTIONS: print_stacktrace=1
-      run: |
-        ./build/test/manifold_test --gtest_filter="Boolean.DeterminismSimpleSubtract:Boolean.DeterminismSimpleUnion:Boolean.DeterminismSimpleIntersect:Boolean.MultiCoplanar:Boolean.NonIntersecting:Manifold.MeshDeterminism"
+  sanitizer:
+    uses: ./.github/workflows/sanitizer.yml
+    with:
+      subset: core
+      retention-days: 1
 
   build_mxe:
     name: MXE (TBB:${{matrix.parallelization == 'ON'}})
@@ -457,10 +459,10 @@ jobs:
       matrix:
         parallelization: [OFF, ON]
     runs-on: ubuntu-latest
-    container: openscad/mxe-x86_64-gui:latest
+    # Resolved from openscad/mxe-x86_64-gui:latest on 2026-09-07.
+    container: openscad/mxe-x86_64-gui@sha256:2df7d1c09a50192a523b4f9ea1f6155228a90e405545149d5bb3b41907f61b55
     steps:
-    - uses: actions/checkout@v6
-    - *clone-clipper2
+    - uses: actions/checkout@v7
     - name: Build
       run: |
         export MXEDIR=/mxe
@@ -477,7 +479,6 @@ jobs:
           -DMANIFOLD_CBIND=ON \
           -DMANIFOLD_DEBUG=ON \
           -DMANIFOLD_PAR=${{matrix.parallelization}} \
-          -DFETCHCONTENT_SOURCE_DIR_CLIPPER2=clipper2 \
           . -B build
         $CMAKE --build build
 
@@ -493,8 +494,8 @@ jobs:
         os: [macos-15-intel, macos-latest]
     runs-on: ${{matrix.os}}
     steps:
-    - uses: actions/checkout@v6
-    - uses: actions/setup-python@v5
+    - uses: actions/checkout@v7
+    - uses: actions/setup-python@v7
       with:
         python-version: '3.x'
         cache: 'pip'
@@ -505,7 +506,6 @@ jobs:
     - name: Install TBB
       if: matrix.parallelization == 'ON'
       run: brew install tbb
-    - *clone-clipper2
     - name: Build
       run: |
         cmake \
@@ -517,7 +517,6 @@ jobs:
           -DMANIFOLD_PYBIND=ON \
           -DASSIMP_ENABLE=ON \
           -DMANIFOLD_PAR=${{matrix.parallelization}} \
-          -DFETCHCONTENT_SOURCE_DIR_CLIPPER2=clipper2 \
           . -B build
         cmake --build build
     - name: Test
@@ -531,7 +530,7 @@ jobs:
         bash ./scripts/export_determinism_meshes.sh build/test ./manifold_test meshes-mac
     - name: Upload determinism meshes (macOS)
       if: matrix.parallelization == 'OFF' && matrix.shared == 'OFF' && matrix.os == 'macos-latest'
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: meshes-mac
         path: meshes-mac/
@@ -548,8 +547,8 @@ jobs:
     timeout-minutes: 30
     runs-on: macos-latest
     steps:
-    - uses: actions/checkout@v6
-    - uses: actions/setup-python@v5
+    - uses: actions/checkout@v7
+    - uses: actions/setup-python@v7
       with:
         python-version: '3.x'
         cache: 'pip'
@@ -558,10 +557,8 @@ jobs:
         brew install googletest cmake
         pip install trimesh pytest
     - *clone-tbb
-    - *clone-clipper2
     - name: test cmake consumer subdir
       run: |
-        export CLIPPER2=$(pwd)/clipper2
         export TBB=$(pwd)/tbb
         cd ..
         ./manifold/scripts/test-cmake-subdir.sh
@@ -577,7 +574,6 @@ jobs:
           -DMANIFOLD_PYBIND=OFF \
           -DMANIFOLD_PAR=ON \
           -DFETCHCONTENT_SOURCE_DIR_TBB=tbb \
-          -DFETCHCONTENT_SOURCE_DIR_CLIPPER2=clipper2 \
           . -B build
         cmake --build build
     - name: Test
@@ -596,7 +592,7 @@ jobs:
         variant: [manifold-none, manifold-tbb, manifold-js, manifold-js-tbb, manifold3d]
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
     - uses: DeterminateSystems/nix-installer-action@main
     - uses: DeterminateSystems/magic-nix-cache-action@main
     - run: nix build -L '.?submodules=1#${{matrix.variant}}'
@@ -606,22 +602,57 @@ jobs:
     needs: [build, build_windows, build_mac]
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
     - name: Download Linux meshes
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         name: meshes-linux
         path: meshes/linux
     - name: Download macOS meshes
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         name: meshes-mac
         path: meshes/mac
     - name: Download Windows meshes
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         name: meshes-windows
         path: meshes/windows
     - name: Compare meshes across platforms
       run: |
         bash ./scripts/compare_artifact.sh meshes
+
+  benchmark_guard:
+    name: perfTest base-vs-head guard
+    if: github.event_name == 'pull_request'
+    timeout-minutes: 45
+    runs-on: macos-15
+    env:
+      PERF_REPEATS: 3
+      REGRESSION_WARN_PERCENT: 20
+      REGRESSION_WARN_ABS_MS: 10
+      MEMORY_WARN_PERCENT: 20
+      MEMORY_WARN_ABS_MB: 50
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        fetch-depth: 0
+    - name: Install brew packages
+      run: brew install googletest cmake
+    - name: Benchmark base and head
+      run: >
+        python3 ./scripts/benchmark_pr_perf_guard.py
+        --base-sha "${{ github.event.pull_request.base.sha }}"
+        --head-sha "${{ github.event.pull_request.head.sha }}"
+        --repeats "${PERF_REPEATS}"
+    - name: Compare benchmark results
+      run: >
+        python3 ./scripts/compare_pr_perf_guard.py
+        --base-dir ./bench/base
+        --head-dir ./bench/head
+        --warn-percent "${REGRESSION_WARN_PERCENT}"
+        --warn-abs-ms "${REGRESSION_WARN_ABS_MS}"
+        --memory-warn-percent "${MEMORY_WARN_PERCENT}"
+        --memory-warn-abs-mb "${MEMORY_WARN_ABS_MB}"
+        --markdown-out ./bench/summary.md
+        --json-out ./bench/result.json

@@ -67,8 +67,9 @@ const insertMetaData =
     (text: string, sourceUrl?: string) => {
       if (sourceUrl) {
         const st = new MagicString(text);
-        st.prepend(`const _import_meta_url=_manifold_runtime_url ?? '${
-            sourceUrl}';\n`);
+        // Quote the url, so a Windows path can't add escape sequences.
+        st.prepend(`const _import_meta_url=_manifold_runtime_url ?? ${
+            JSON.stringify(sourceUrl)};\n`);
 
         const map = st.generateMap({hires: true});
         return `${st.toString()}\n//# sourceMappingURL=${map.toUrl()}`;
@@ -110,13 +111,14 @@ export const esbuildManifoldPlugin = (options: BundlerOptions = {}):
       'importModel', 'importManifold',
       // Getters for global properties
       'getCircularSegments', 'getMinCircularAngle', 'getMinCircularEdgeLength',
-      'getAnimationDuration', 'getAnimationFPS', 'getAnimationMode',
+      'getRelativePrecision', 'getAnimationDuration', 'getAnimationFPS',
+      'getAnimationMode',
       // Setters for global properties.
       // These will only be defined for top level scripts
       'setMinCircularAngle', 'setMinCircularEdgeLength', 'setCircularSegments',
-      'resetToCircularDefaults', 'setMorphStart', 'setMorphEnd',
-      'setAnimationDuration', 'setAnimationFPS', 'setAnimationMode',
-      'resetGLTFNodes',
+      'setRelativePrecision', 'resetToCircularDefaults', 'setMorphStart',
+      'setMorphEnd', 'setAnimationDuration', 'setAnimationFPS',
+      'setAnimationMode', 'resetGLTFNodes',
 
       // ManifoldCAD specific exports.
       'isManifoldCAD'
@@ -273,9 +275,10 @@ export const esbuildManifoldPlugin = (options: BundlerOptions = {}):
     build.onLoad(
         {filter: /.(ts|js)$/}, async(args): Promise<esbuild.OnLoadResult> => {
           const fs = await import('node:fs/promises');
+          const {pathToFileURL} = await import('node:url');
           const text = await fs.readFile(args.path, 'utf8');
 
-          const contents = insertMetaData(text, `file://${args.path}`);
+          const contents = insertMetaData(text, pathToFileURL(args.path).href);
           const loader = (args.path.match(/\.js$/)) ? 'js' : 'ts';
           return {contents, loader};
         });
@@ -341,14 +344,17 @@ export const bundleCode =
     async(code: string, options: BundlerOptions = {}): Promise<string> => {
   try {
     let resolveDir: string|undefined;
+    let sourceUrl = `file://${options.filename}`;
     if (isNode() && options.filename) {
       const {dirname} = await import('node:path');
+      const {pathToFileURL} = await import('node:url');
       resolveDir = options.resolveDir ?? dirname(options.filename);
+      sourceUrl = pathToFileURL(options.filename).href;
     }
     const built = await esbuild.build({
       ...(await getEsbuildConfig(options)),
       stdin: {
-        contents: insertMetaData(code, `file://${options.filename}`),
+        contents: insertMetaData(code, sourceUrl),
         sourcefile: options.filename,
         resolveDir,
         loader: 'ts',

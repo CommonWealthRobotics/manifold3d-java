@@ -1,6 +1,6 @@
 import {beforeAll, expect, suite, test} from 'vitest';
 
-import Module, {type ManifoldToplevel} from '../manifold'
+import Module, {type ManifoldToplevel, type Polygons} from '../manifold'
 
 let manifoldModule: ManifoldToplevel;
 
@@ -26,10 +26,51 @@ suite('CrossSection Bindings', () => {
     expect(cs.area()).to.be.greaterThan(0);
   });
 
+  test('evenOdd fills by parity, not sign', () => {
+    const nested: Polygons = [
+      [[-2, -2], [2, -2], [2, 2], [-2, 2]],
+      [[-1, -1], [1, -1], [1, 1], [-1, 1]],
+    ];
+    // Positive fill leaves the nested pair solid; even-odd cuts the inner
+    // square out.
+    expect(manifoldModule.CrossSection.ofPolygons(nested).area())
+        .toBeCloseTo(16);
+    const evenOdd = manifoldModule.CrossSection.evenOdd(nested);
+    expect(evenOdd.numContour()).toEqual(2);
+    expect(evenOdd.area()).toBeCloseTo(12);
+  });
+
+  test(
+      'nonZero fills both signs and even windings, and cancels opposites',
+      () => {
+        const clockwise: Polygons = [[[0, 0], [0, 2], [2, 2], [2, 0]]];
+        const reversed: Polygons = [clockwise[0].slice().reverse()];
+        const single = manifoldModule.CrossSection.nonZero(clockwise);
+        const doubled =
+            manifoldModule.CrossSection.nonZero([clockwise[0], clockwise[0]]);
+        const cancelled =
+            manifoldModule.CrossSection.nonZero([clockwise[0], reversed[0]]);
+        expect(single.area()).toBeCloseTo(4);
+        expect(doubled.area()).toBeCloseTo(4);
+        expect(cancelled.isEmpty()).toBe(true);
+        expect(
+            manifoldModule.CrossSection.ofPolygons(single.toPolygons()).area())
+            .toBeCloseTo(4);
+      });
+
   test('simplify argument is defaulted', () => {
     const cs = manifoldModule.CrossSection.circle(1).simplify();
     expect(cs.numContour()).toEqual(1);
     expect(cs.area()).to.be.greaterThan(0);
+  });
+
+  test('extrude scales X and Y by a single scaleTop (issue #1780)', () => {
+    const square = manifoldModule.CrossSection.square(10);
+    expect(square.extrude(10, 0, 0, 1).volume()).toBeCloseTo(1000);
+    expect(square.extrude(10, 0, 0, 0.5).volume())
+        .toBeCloseTo(square.extrude(10, 0, 0, [0.5, 0.5]).volume());
+    expect(manifoldModule.Manifold.extrude(square, 10, 0, 0, 1).volume())
+        .toBeCloseTo(1000);
   });
 });
 
@@ -45,6 +86,8 @@ suite('Manifold Bindings', () => {
     expect(hits).toHaveLength(2);
     expect(hits[0].position[2]).toEqual(-0.5);
     expect(hits[1].position[2]).toEqual(0.5);
+    expect(hits[0].crossing).toEqual(1);
+    expect(hits[1].crossing).toEqual(-1);
   });
 
   test('rayCast returns empty on miss', () => {

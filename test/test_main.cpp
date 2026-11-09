@@ -17,6 +17,7 @@
 #include <fstream>
 #endif
 
+#include "gtest/gtest.h"
 #include "manifold/manifold.h"
 #include "test.h"
 
@@ -111,6 +112,7 @@ int main(int argc, char** argv) {
   }
 
   manifold::ManifoldParams().intermediateChecks = true;
+  manifold::ManifoldParams().verifyNoDegenerates = true;
   manifold::ManifoldParams().processOverlaps = false;
 
   FrameMarkEnd(name);
@@ -332,7 +334,7 @@ void Identical(const MeshGL& mesh1, const MeshGL& mesh2) {
 void RelatedGL(const Manifold& out, const std::vector<MeshGL>& originals,
                bool checkNormals, bool updateNormals) {
   ASSERT_FALSE(out.IsEmpty());
-  MeshGL output = out.GetMeshGL();
+  MeshGL output = out.TriID2FaceID().GetMeshGL();
   std::vector<mat3x4> runTransforms(output.NumRun());
   for (size_t run = 0; run < output.NumRun(); ++run) {
     runTransforms[run] = output.GetRunTransform(run);
@@ -376,8 +378,7 @@ void RelatedGL(const Manifold& out, const std::vector<MeshGL>& originals,
     }
     ASSERT_LT(i, originals.size());
     const MeshGL& inMesh = originals[i];
-    const float tolerance =
-        3 * std::max(static_cast<float>(out.GetTolerance()), inMesh.tolerance);
+    const float tolerance = 3 * std::max(output.tolerance, inMesh.tolerance);
 
     for (uint32_t tri = output.runIndex[run] / 3;
          tri < output.runIndex[run + 1] / 3; ++tri) {
@@ -470,10 +471,6 @@ void ExpectMeshes(const Manifold& manifold,
   }
 }
 
-void CheckStrictly(const Manifold& manifold) {
-  EXPECT_EQ(manifold.NumDegenerateTris(), 0);
-}
-
 void CheckGL(const Manifold& manifold, bool noMerge) {
   ASSERT_FALSE(manifold.IsEmpty());
   const MeshGL meshGL = manifold.GetMeshGL();
@@ -488,7 +485,6 @@ void CheckGL(const Manifold& manifold, bool noMerge) {
   if (!meshGL.runTransform.empty()) {
     EXPECT_EQ(meshGL.runTransform.size(), 12 * meshGL.runOriginalID.size());
   }
-  EXPECT_EQ(meshGL.faceID.size(), meshGL.NumTri());
   CheckFinite(meshGL);
 }
 
@@ -516,10 +512,6 @@ void CheckGLEquiv(const MeshGL& mgl1, const MeshGL& mgl2) {
 
 #ifndef MANIFOLD_NO_FILESYSTEM
 Manifold ReadTestOBJ(const std::string& filename) {
-  return Manifold(ReadTestMeshGL64OBJ(filename));
-}
-
-MeshGL64 ReadTestMeshGL64OBJ(const std::string& filename) {
 #ifdef __EMSCRIPTEN__
   std::string obj = "/models/" + filename;
 #else
@@ -530,8 +522,9 @@ MeshGL64 ReadTestMeshGL64OBJ(const std::string& filename) {
 #endif
   std::ifstream f;
   f.open(obj);
-  MeshGL64 a = ReadOBJ(f);
+  Manifold a = Manifold::ReadOBJ(f);
   f.close();
+  EXPECT_FALSE(a.IsEmpty());
   return a;
 }
 
