@@ -618,6 +618,113 @@ class ManifoldBindingsTest {
 	}
 
 	// =========================================================================
+	// Compose / Decompose
+	// =========================================================================
+
+	/**
+	 * Decompose two disjoint cubes into exactly two components, then rebuild the
+	 * original pair with compose and check the volume is preserved.
+	 *
+	 * <p>Both cubes are centred far enough apart that their surfaces never touch,
+	 * so manifold sees them as one composed manifold with two connected
+	 * components. Decompose must return them in some order as two 8-vertex,
+	 * 12-triangle cubes; compose must turn the pair back into a single manifold
+	 * whose volume is the sum of the parts (components do not overlap, so no
+	 * boolean overlap needs subtracting).
+	 */
+	@Test
+	@Order(72)
+	@DisplayName("Decompose(compose of 2 disjoint cubes): two components, round-trip volume")
+	void testDecomposeDisjointCubes() throws Throwable {
+		java.lang.foreign.MemorySegment left = null;
+		java.lang.foreign.MemorySegment right = null;
+		java.lang.foreign.MemorySegment composed = null;
+		java.lang.foreign.MemorySegment[] parts = null;
+		java.lang.foreign.MemorySegment recomposed = null;
+		try {
+			left = mb.translate(makeCube(), -15, 0, 0);
+			right = mb.translate(makeCube(), 15, 0, 0);
+			double leftVol = mb.volume(left);
+			double rightVol = mb.volume(right);
+
+			composed = mb.compose(new java.lang.foreign.MemorySegment[] { left, right });
+			assertMeshValid(composed, "Composed pair");
+			assertEquals(leftVol + rightVol, mb.volume(composed), (leftVol + rightVol) * 0.001,
+					"Composed volume must equal the sum of the disjoint parts");
+
+			parts = mb.decompose(composed);
+			assertEquals(2, parts.length, "Two disjoint cubes must decompose into exactly 2 components");
+
+			double sumOfParts = 0;
+			for (java.lang.foreign.MemorySegment part : parts) {
+				assertNotNull(part, "Each component segment must be non-null");
+				assertMeshValid(part, "Component");
+				// each component is one of the original 10 mm cubes
+				assertEquals(8, mb.numVert(part), "Each component must be a cube with 8 vertices");
+				assertEquals(12, mb.numTri(part), "Each component must be a cube with 12 triangles");
+				assertEquals(CUBE_SIZE * CUBE_SIZE * CUBE_SIZE, mb.volume(part), 0.001,
+						"Each component must have the volume of the original cube");
+				sumOfParts += mb.volume(part);
+			}
+			assertEquals(leftVol + rightVol, sumOfParts, (leftVol + rightVol) * 0.001,
+					"Component volumes must sum to the composed volume");
+
+			recomposed = mb.compose(parts);
+			assertMeshValid(recomposed, "Recomposed pair");
+			assertEquals(leftVol + rightVol, mb.volume(recomposed), (leftVol + rightVol) * 0.001,
+					"Recomposed volume must equal the composed volume");
+		} finally {
+			mb.safeDelete(left);
+			mb.safeDelete(right);
+			mb.safeDelete(composed);
+			if (parts != null)
+				for (java.lang.foreign.MemorySegment part : parts)
+					mb.safeDelete(part);
+			mb.safeDelete(recomposed);
+		}
+	}
+
+	/**
+	 * Decompose of a single connected solid must yield exactly one component
+	 * with the same geometry, and decompose of an empty manifold must yield no
+	 * components.
+	 */
+	@Test
+	@Order(73)
+	@DisplayName("Decompose edge cases: single solid → 1 part, empty manifold → 0 parts")
+	void testDecomposeEdgeCases() throws Throwable {
+		java.lang.foreign.MemorySegment sphere = null;
+		java.lang.foreign.MemorySegment[] sphereParts = null;
+		try {
+			sphere = makeSphere();
+			sphereParts = mb.decompose(sphere);
+			assertEquals(1, sphereParts.length, "A connected solid must decompose into exactly 1 component");
+			assertEquals(mb.numVert(sphere), mb.numVert(sphereParts[0]),
+					"Sole component must have the same vertex count as the input");
+			assertEquals(mb.volume(sphere), mb.volume(sphereParts[0]), mb.volume(sphere) * 0.001,
+					"Sole component must have the same volume as the input");
+		} finally {
+			mb.safeDelete(sphere);
+			if (sphereParts != null)
+				for (java.lang.foreign.MemorySegment part : sphereParts)
+					mb.safeDelete(part);
+		}
+
+		java.lang.foreign.MemorySegment[] emptyParts = null;
+		java.lang.foreign.MemorySegment emptyManifold = null;
+		try {
+			emptyManifold = mb.empty();
+			emptyParts = mb.decompose(emptyManifold);
+			assertEquals(0, emptyParts.length, "An empty manifold must decompose into 0 components");
+		} finally {
+			mb.safeDelete(emptyManifold);
+			if (emptyParts != null)
+				for (java.lang.foreign.MemorySegment part : emptyParts)
+					mb.safeDelete(part);
+		}
+	}
+
+	// =========================================================================
 	// Slice tests
 	// =========================================================================
 
