@@ -103,6 +103,16 @@ std::shared_ptr<Manifold::Impl> ExtrudeImpl(const Polygons& crossSection,
 }
 }  // namespace
 
+Manifold Manifold::Smooth(const MeshGL& meshGL,
+                          const std::vector<Smoothness>& sharpenedEdges) {
+  return Manifold(MakeSmoothImpl(meshGL, sharpenedEdges));
+}
+
+Manifold Manifold::Smooth(const MeshGL64& meshGL64,
+                          const std::vector<Smoothness>& sharpenedEdges) {
+  return Manifold(MakeSmoothImpl(meshGL64, sharpenedEdges));
+}
+
 /**
  * Constructs a tetrahedron centered at the origin with one vertex at (1,1,1)
  * and the rest at similarly symmetric points.

@@ -32,13 +32,33 @@ ManifoldCrossSection* manifold_cross_section_copy(void* mem,
 
 ManifoldCrossSection* manifold_cross_section_of_simple_polygon(
     void* mem, ManifoldSimplePolygon* p, ManifoldFillRule fr) {
-  return to_c(new (mem) CrossSection(*from_c(p), from_c(fr)));
+  return to_c(new (mem) CrossSection(from_c_fill_rule(fr, Polygons{*from_c(p)})));
 }
 
 ManifoldCrossSection* manifold_cross_section_of_polygons(void* mem,
                                                          ManifoldPolygons* p,
                                                          ManifoldFillRule fr) {
-  return to_c(new (mem) CrossSection(*from_c(p), from_c(fr)));
+  return to_c(new (mem) CrossSection(from_c_fill_rule(fr, *from_c(p))));
+}
+
+ManifoldCrossSection* manifold_cross_section_even_odd_simple_polygon(
+    void* mem, ManifoldSimplePolygon* p) {
+  return to_c(new (mem) CrossSection(CrossSection::EvenOdd(*from_c(p))));
+}
+
+ManifoldCrossSection* manifold_cross_section_even_odd_polygons(
+    void* mem, ManifoldPolygons* p) {
+  return to_c(new (mem) CrossSection(CrossSection::EvenOdd(*from_c(p))));
+}
+
+ManifoldCrossSection* manifold_cross_section_non_zero_simple_polygon(
+    void* mem, ManifoldSimplePolygon* p) {
+  return to_c(new (mem) CrossSection(CrossSection::NonZero(*from_c(p))));
+}
+
+ManifoldCrossSection* manifold_cross_section_non_zero_polygons(
+    void* mem, ManifoldPolygons* p) {
+  return to_c(new (mem) CrossSection(CrossSection::NonZero(*from_c(p))));
 }
 
 ManifoldCrossSectionVec* manifold_cross_section_empty_vec(void* mem) {
@@ -239,7 +259,7 @@ ManifoldPolygons* manifold_cross_section_to_polygons(void* mem,
 
 ManifoldCrossSection* manifold_cross_section_compose(
     void* mem, ManifoldCrossSectionVec* csv) {
-  auto cs = CrossSection::Compose(*from_c(csv));
+  auto cs = CrossSection::BatchBoolean(*from_c(csv), OpType::Add);
   return to_c(new (mem) CrossSection(cs));
 }
 

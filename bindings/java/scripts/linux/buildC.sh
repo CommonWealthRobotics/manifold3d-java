@@ -20,6 +20,7 @@ cd ..
 #rm -rf build
 mkdir build
 cd build
+set -e
 cmake \
   -DMANIFOLD_CROSS_SECTION=ON \
   -DMANIFOLD_USE_BUILTIN_CLIPPER2=ON \

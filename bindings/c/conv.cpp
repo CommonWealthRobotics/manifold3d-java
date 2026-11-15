@@ -200,22 +200,17 @@ OpType from_c(ManifoldOpType optype) {
   return op;
 }
 
-CrossSection::FillRule from_c(ManifoldFillRule fillrule) {
-  auto fr = CrossSection::FillRule::EvenOdd;
+CrossSection from_c_fill_rule(ManifoldFillRule fillrule, const Polygons& polys) {
   switch (fillrule) {
     case MANIFOLD_FILL_RULE_EVEN_ODD:
-      break;
+      return CrossSection::EvenOdd(polys);
     case MANIFOLD_FILL_RULE_NON_ZERO:
-      fr = CrossSection::FillRule::NonZero;
-      break;
+      return CrossSection::NonZero(polys);
     case MANIFOLD_FILL_RULE_POSITIVE:
-      fr = CrossSection::FillRule::Positive;
-      break;
     case MANIFOLD_FILL_RULE_NEGATIVE:
-      fr = CrossSection::FillRule::Negative;
-      break;
-  };
-  return fr;
+    default:
+      return CrossSection(polys);
+  }
 }
 
 CrossSection::JoinType from_c(ManifoldJoinType join_type) {

@@ -173,8 +173,6 @@ ManifoldManifold* manifold_refine_to_length(void* mem, ManifoldManifold* m,
                                             double length);
 ManifoldManifold* manifold_refine_to_tolerance(void* mem, ManifoldManifold* m,
                                                double tolerance);
-ManifoldManifold* manifold_set_tolerance(void* mem, ManifoldManifold* m,
-                                         double tolerance);
 ManifoldManifold* manifold_simplify(void* mem, ManifoldManifold* m,
                                     double tolerance);
 
@@ -228,12 +226,18 @@ size_t manifold_num_tri(ManifoldManifold* m);
 size_t manifold_num_prop(ManifoldManifold* m);
 ManifoldBox* manifold_bounding_box(void* mem, ManifoldManifold* m);
 double manifold_epsilon(ManifoldManifold* m);
-double manifold_get_tolerance(ManifoldManifold* m);
 size_t manifold_num_prop_vert(ManifoldManifold* m);
 int manifold_genus(ManifoldManifold* m);
 double manifold_surface_area(ManifoldManifold* m);
 double manifold_volume(ManifoldManifold* m);
 int manifold_get_circular_segments(double radius);
+
+// Version
+
+// Fills version with the runtime library version as {major, minor, patch}.
+void manifold_version(int version[3]);
+
+// Static Quality Globals
 int manifold_original_id(ManifoldManifold* m);
 uint32_t manifold_reserve_ids(uint32_t n);
 ManifoldManifold* manifold_set_properties(
@@ -248,6 +252,10 @@ double manifold_min_gap(ManifoldManifold* m, ManifoldManifold* other,
 ManifoldManifold* manifold_calculate_normals(void* mem, ManifoldManifold* m,
                                              int normal_idx,
                                              double min_sharp_angle);
+
+// Point containment
+int manifold_winding_number(const ManifoldManifold* m, double x, double y,
+                            double z);
 
 // Ray Casting
 ManifoldRayHitVec* manifold_ray_cast(void* mem, ManifoldManifold* m,
@@ -301,6 +309,14 @@ ManifoldCrossSection* manifold_cross_section_of_simple_polygon(
 ManifoldCrossSection* manifold_cross_section_of_polygons(void* mem,
                                                          ManifoldPolygons* p,
                                                          ManifoldFillRule fr);
+ManifoldCrossSection* manifold_cross_section_even_odd_simple_polygon(
+    void* mem, ManifoldSimplePolygon* p);
+ManifoldCrossSection* manifold_cross_section_even_odd_polygons(
+    void* mem, ManifoldPolygons* p);
+ManifoldCrossSection* manifold_cross_section_non_zero_simple_polygon(
+    void* mem, ManifoldSimplePolygon* p);
+ManifoldCrossSection* manifold_cross_section_non_zero_polygons(
+    void* mem, ManifoldPolygons* p);
 ManifoldCrossSection* manifold_cross_section_square(void* mem, double x,
                                                     double y, int center);
 ManifoldCrossSection* manifold_cross_section_circle(void* mem, double radius,
@@ -530,6 +546,10 @@ size_t manifold_execution_context_size();
 
 ManifoldManifold* manifold_alloc_manifold();
 ManifoldManifoldVec* manifold_alloc_manifold_vec();
+// The Java runtime cannot safely run parallel C++ closures; this is identical
+// to manifold_alloc_manifold_vec but keeps a distinct symbol for the Java
+// bindings to bind explicitly.
+ManifoldManifoldVec* manifold_alloc_manifold_vec_java();
 ManifoldCrossSection* manifold_alloc_cross_section();
 ManifoldCrossSectionVec* manifold_alloc_cross_section_vec();
 ManifoldRayHitVec* manifold_alloc_ray_hit_vec();

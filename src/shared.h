@@ -368,6 +368,11 @@ struct TriRef {
   /// triangle index, but after boolean operations it may refer to a triangle
   /// that is no longer present in this mesh.
   int triID;
+
+  bool SameFace(const TriRef& other) const {
+    return meshID == other.meshID && triID == other.triID &&
+           faceID == other.faceID;
+  }
 };
 
 /**

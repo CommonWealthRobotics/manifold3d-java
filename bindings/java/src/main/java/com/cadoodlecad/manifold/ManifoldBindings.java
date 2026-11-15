@@ -498,6 +498,16 @@ public class ManifoldBindings {
 				ValueLayout.ADDRESS, // ManifoldPolygons* ps
 				ValueLayout.JAVA_INT); // ManifoldFillRule fr
 
+		// ManifoldCrossSection* manifold_cross_section_even_odd_polygons(void* mem,
+		// ManifoldPolygons* p);
+		load("manifold_cross_section_even_odd_polygons", ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+				ValueLayout.ADDRESS);
+
+		// ManifoldCrossSection* manifold_cross_section_non_zero_polygons(void* mem,
+		// ManifoldPolygons* p);
+		load("manifold_cross_section_non_zero_polygons", ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+				ValueLayout.ADDRESS);
+
 		// ManifoldCrossSection* manifold_cross_section_offset(void* mem,
 		// ManifoldCrossSection* cs,
 //		     double delta, ManifoldJoinType jt, double miter_limit, int circular_segments);
@@ -515,6 +525,107 @@ public class ManifoldBindings {
 
 		// void manifold_delete_cross_section(ManifoldCrossSection* cs);
 		loadVoid("manifold_delete_cross_section", ValueLayout.ADDRESS);
+
+		// ===== Library info / new upstream APIs =====
+
+		// void manifold_version(int version[3]);
+		loadVoid("manifold_version", ValueLayout.ADDRESS);
+
+		// int manifold_winding_number(const ManifoldManifold* m, double x, double
+		// y, double z);
+		load("manifold_winding_number", ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_DOUBLE,
+				ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE);
+
+		// ManifoldRayHitVec* manifold_ray_cast(void* mem, ManifoldManifold* m,
+		// double ox, oy, oz, ex, ey, ez);
+		load("manifold_ray_cast", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+				ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE,
+				ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE);
+
+		// size_t manifold_ray_hit_vec_length(ManifoldRayHitVec* v);
+		load("manifold_ray_hit_vec_length", ValueLayout.JAVA_LONG, ValueLayout.ADDRESS);
+
+		// ManifoldRayHit manifold_ray_hit_vec_get(ManifoldRayHitVec* v, size_t idx);
+		// struct: uint64 face_id, double distance, vec3 position, vec3 normal
+		load("manifold_ray_hit_vec_get",
+				MemoryLayout.structLayout(ValueLayout.JAVA_LONG.withName("face_id"),
+						ValueLayout.JAVA_DOUBLE.withName("distance"),
+						MemoryLayout.structLayout(ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE,
+								ValueLayout.JAVA_DOUBLE).withName("position"),
+						MemoryLayout.structLayout(ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE,
+								ValueLayout.JAVA_DOUBLE).withName("normal")),
+				ValueLayout.ADDRESS, ValueLayout.JAVA_LONG);
+
+		// double manifold_min_gap(ManifoldManifold* m, ManifoldManifold* other,
+		// double searchLength);
+		load("manifold_min_gap", ValueLayout.JAVA_DOUBLE, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+				ValueLayout.JAVA_DOUBLE);
+
+		// ManifoldManifold* manifold_calculate_curvature(void* mem,
+		// ManifoldManifold* m, int gaussian_idx, int mean_idx);
+		load("manifold_calculate_curvature", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+				ValueLayout.JAVA_INT, ValueLayout.JAVA_INT);
+
+		// ManifoldManifold* manifold_set_properties(void* mem, ManifoldManifold* m,
+		// int num_prop, callback, ctx) — callback not exposed yet
+
+		// ManifoldManifold* manifold_extrude(void* mem, ManifoldPolygons* cs,
+		// double height, int slices, double twist_degrees, double scale_x,
+		// double scale_y);
+		load("manifold_extrude", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+				ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_INT, ValueLayout.JAVA_DOUBLE, ValueLayout.JAVA_DOUBLE,
+				ValueLayout.JAVA_DOUBLE);
+
+		// ManifoldManifold* manifold_revolve(void* mem, ManifoldPolygons* cs, int
+		// circular_segments, double revolve_degrees);
+		load("manifold_revolve", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+				ValueLayout.JAVA_INT, ValueLayout.JAVA_DOUBLE);
+
+		// ManifoldTriangulation* manifold_triangulate(void* mem,
+		// ManifoldPolygons* ps, double epsilon);
+		load("manifold_triangulate", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+				ValueLayout.JAVA_DOUBLE);
+
+		// size_t manifold_triangulation_num_tri(ManifoldTriangulation* m);
+		load("manifold_triangulation_num_tri", ValueLayout.JAVA_LONG, ValueLayout.ADDRESS);
+
+		// int* manifold_triangulation_tri_verts(void* mem, ManifoldTriangulation*
+		// m); copies into caller storage sized num_tri * 3 ints
+		load("manifold_triangulation_tri_verts", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS);
+
+		// void manifold_delete_triangulation(ManifoldTriangulation* m);
+		loadVoid("manifold_delete_triangulation", ValueLayout.ADDRESS);
+
+		// ManifoldPolygons* manifold_project(void* mem, ManifoldManifold* m);
+		load("manifold_project", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS);
+
+		// ManifoldPolygons* manifold_polygons(void* mem, ManifoldSimplePolygon**
+		// ps, size_t length);
+		load("manifold_polygons", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+				ValueLayout.JAVA_LONG);
+
+		// ManifoldTriangulation* manifold_alloc_triangulation();
+		load("manifold_alloc_triangulation", ValueLayout.ADDRESS);
+
+		// int* manifold_triangulation_tri_verts(void* mem,
+		// ManifoldTriangulation* m); copies into caller storage
+
+		// ManifoldSimplePolygon* manifold_simple_polygon(void* mem, ManifoldVec2*
+		// ps, size_t length);
+		load("manifold_simple_polygon", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+				ValueLayout.JAVA_LONG);
+
+		// ManifoldSimplePolygon* manifold_alloc_simple_polygon();
+		load("manifold_alloc_simple_polygon", ValueLayout.ADDRESS);
+
+		// void manifold_delete_simple_polygon(ManifoldSimplePolygon* p);
+		loadVoid("manifold_delete_simple_polygon", ValueLayout.ADDRESS);
+
+		// ManifoldRayHitVec* manifold_alloc_ray_hit_vec();
+		load("manifold_alloc_ray_hit_vec", ValueLayout.ADDRESS);
+
+		// void manifold_delete_ray_hit_vec(ManifoldRayHitVec* v);
+		loadVoid("manifold_delete_ray_hit_vec", ValueLayout.ADDRESS);
 
 		System.out.println("Available Manifold functions: " + functions.keySet());
 	}
@@ -733,6 +844,227 @@ public class ManifoldBindings {
 			functions.get("manifold_delete_polygons").invoke(p);
 		} catch (Throwable ignored) {
 		}
+	}
+
+	// ===== New upstream capability wrappers =====
+
+	/**
+	 * Runtime version of the native manifold library, as {@code {major, minor,
+	 * patch}}. Lets callers verify the loaded natives match what they were built
+	 * against.
+	 */
+	public int[] version() throws Throwable {
+		try (Arena arena = Arena.ofConfined()) {
+			MemorySegment v = arena.allocate(ValueLayout.JAVA_INT, 3);
+			functions.get("manifold_version").invoke(v);
+			return new int[] { (int) v.getAtIndex(ValueLayout.JAVA_INT, 0),
+					(int) v.getAtIndex(ValueLayout.JAVA_INT, 1), (int) v.getAtIndex(ValueLayout.JAVA_INT, 2) };
+		}
+	}
+
+	/**
+	 * Point-containment query: returns the winding number of the manifold at the
+	 * given point — {@code 0} outside, {@code ±1} (or more, for nested shells)
+	 * inside.
+	 */
+	public int windingNumber(MemorySegment m, double x, double y, double z) throws Throwable {
+		return (int) functions.get("manifold_winding_number").invoke(m, x, y, z);
+	}
+
+	/** One ray-cast hit: triangle index, parametric distance, position, normal. */
+	public record RayHit(long faceID, double distance, double[] position, double[] normal) {
+	}
+
+	/**
+	 * Casts a ray segment from {@code origin} to {@code end} and returns every
+	 * surface hit in order. An empty list means the segment misses the solid.
+	 */
+	public ArrayList<RayHit> rayCast(MemorySegment m, double[] origin, double[] end) throws Throwable {
+		if (origin == null || origin.length != 3 || end == null || end.length != 3)
+			throw new IllegalArgumentException("origin and end must each be a double[3] of {x, y, z}");
+		MemorySegment hits = null;
+		try (Arena arena = Arena.ofConfined()) {
+			MemorySegment mem = (MemorySegment) functions.get("manifold_alloc_ray_hit_vec").invoke();
+			hits = (MemorySegment) functions.get("manifold_ray_cast").invoke(mem, m, origin[0], origin[1],
+					origin[2], end[0], end[1], end[2]);
+
+			long n = (long) functions.get("manifold_ray_hit_vec_length").invoke(hits);
+			MethodHandle get = functions.get("manifold_ray_hit_vec_get");
+			ArrayList<RayHit> out = new ArrayList<>((int) n);
+			for (long i = 0; i < n; i++) {
+				MemorySegment hit = (MemorySegment) get.invoke(arena, hits, i);
+				long faceID = hit.get(ValueLayout.JAVA_LONG, 0);
+				double distance = hit.get(ValueLayout.JAVA_DOUBLE, 8);
+				MemorySegment pos = hit.asSlice(16, 24);
+				MemorySegment nrm = hit.asSlice(40, 24);
+				out.add(new RayHit(faceID, distance,
+						new double[] { pos.get(ValueLayout.JAVA_DOUBLE, 0), pos.get(ValueLayout.JAVA_DOUBLE, 8),
+								pos.get(ValueLayout.JAVA_DOUBLE, 16) },
+						new double[] { nrm.get(ValueLayout.JAVA_DOUBLE, 0), nrm.get(ValueLayout.JAVA_DOUBLE, 8),
+								nrm.get(ValueLayout.JAVA_DOUBLE, 16) }));
+			}
+			return out;
+		} finally {
+			if (hits != null) {
+				try {
+					functions.get("manifold_delete_ray_hit_vec").invoke(hits);
+				} catch (Throwable ignored) {
+				}
+			}
+		}
+	}
+
+	/**
+	 * Minimum gap between this manifold and another, searching along a bounding
+	 * sphere hierarchy up to {@code searchLength}. Returns
+	 * {@code java.lang.Double.MAX_VALUE} when the solids are farther apart than
+	 * the search length.
+	 */
+	public double minGap(MemorySegment a, MemorySegment b, double searchLength) throws Throwable {
+		return (double) functions.get("manifold_min_gap").invoke(a, b, searchLength);
+	}
+
+	/**
+	 * Appends Gaussian ({@code gaussianIdx}) and mean ({@code meanIdx})
+	 * curvature channels to the vertex properties. Indices -1 skip a channel;
+	 * the output keeps everything else unchanged.
+	 */
+	public MemorySegment calculateCurvature(MemorySegment m, int gaussianIdx, int meanIdx) throws Throwable {
+		MemorySegment mem = (MemorySegment) functions.get("manifold_alloc_manifold").invoke();
+		return (MemorySegment) functions.get("manifold_calculate_curvature").invoke(mem, m, gaussianIdx, meanIdx);
+	}
+
+	/**
+	 * Projects the manifold's silhouette onto the XY plane. Exactly
+	 * {@link #slice} at any height for a prismatic solid, but defined for any
+	 * manifold: every triangle is extruded to an infinite prism and unioned.
+	 */
+	public ArrayList<double[][]> project(MemorySegment m) throws Throwable {
+		MemorySegment polygons = null;
+		try (Arena arena = Arena.ofConfined()) {
+			MemorySegment mem = (MemorySegment) functions.get("manifold_alloc_polygons").invoke();
+			polygons = (MemorySegment) functions.get("manifold_project").invoke(mem, m);
+			return polygonsToJava(polygons, arena);
+		} finally {
+			safeDeletePolygons(polygons);
+		}
+	}
+
+	/**
+	 * Extrudes a 2D cross-section (as from {@link #slice} or
+	 * {@link #project}) into a prismatic solid. {@code scaleTop} shrinks or
+	 * grows the top face; {@code twistDegrees} rotates it along the extrusion.
+	 *
+	 * Overlapping contours are resolved by the library's default (positive)
+	 * fill rule; route through
+	 * {@code crossSectionOfPolygons(...)} / {@code crossSectionToPolygons(...)}
+	 * with an explicit {@link FillRule} when even-odd semantics are needed.
+	 *
+	 * @param contours    contours as {@code double[contour][points][2]}
+	 * @param height      extrusion distance along +Z
+	 * @param slices      number of divisions for twist/scale; 0 disables
+	 * @param scaleTop    uniform top-face scale factor
+	 */
+	public MemorySegment extrude(ArrayList<double[][]> contours, double height, int slices, double twistDegrees,
+			double scaleTop) throws Throwable {
+		if (contours == null || contours.isEmpty())
+			throw new IllegalArgumentException("contours must not be empty");
+		try (Arena arena = Arena.ofConfined()) {
+			MemorySegment polys = javaToPolygons(arena, contours);
+			MemorySegment mem = (MemorySegment) functions.get("manifold_alloc_manifold").invoke();
+			return (MemorySegment) functions.get("manifold_extrude").invoke(mem, polys, height, slices,
+					twistDegrees, scaleTop, scaleTop);
+		}
+	}
+
+	/**
+	 * Revolves a 2D cross-section around the Y axis. {@code revolveDegrees}
+	 * below 360 produces a partial revolve; the cross-section must sit at
+	 * x >= 0.
+	 */
+	public MemorySegment revolve(ArrayList<double[][]> contours, int circularSegments, double revolveDegrees)
+			throws Throwable {
+		if (contours == null || contours.isEmpty())
+			throw new IllegalArgumentException("contours must not be empty");
+		try (Arena arena = Arena.ofConfined()) {
+			MemorySegment polys = javaToPolygons(arena, contours);
+			MemorySegment mem = (MemorySegment) functions.get("manifold_alloc_manifold").invoke();
+			return (MemorySegment) functions.get("manifold_revolve").invoke(mem, polys, circularSegments,
+					revolveDegrees);
+		}
+	}
+
+	/**
+	 * Triangulates a 2D cross-section, returning one flat index triple per
+	 * triangle (referencing the contour points in input order).
+	 */
+	public int[][] triangulate(ArrayList<double[][]> contours, double epsilon) throws Throwable {
+		if (contours == null || contours.isEmpty())
+			throw new IllegalArgumentException("contours must not be empty");
+		MemorySegment tri = null;
+		try (Arena arena = Arena.ofConfined()) {
+			MemorySegment polys = javaToPolygons(arena, contours);
+			MemorySegment mem = (MemorySegment) functions.get("manifold_alloc_triangulation").invoke();
+			tri = (MemorySegment) functions.get("manifold_triangulate").invoke(mem, polys, epsilon);
+
+			long nTri = (long) functions.get("manifold_triangulation_num_tri").invoke(tri);
+			MemorySegment buf = arena.allocate(nTri * 3L * Integer.BYTES);
+			functions.get("manifold_triangulation_tri_verts").invoke(buf, tri);
+			MemorySegment verts = buf;
+			int[][] out = new int[(int) nTri][3];
+			for (long t = 0; t < nTri; t++) {
+				for (int j = 0; j < 3; j++)
+					out[(int) t][j] = (int) verts.getAtIndex(ValueLayout.JAVA_INT, t * 3 + j);
+			}
+			return out;
+		} finally {
+			if (tri != null) {
+				try {
+					functions.get("manifold_delete_triangulation").invoke(tri);
+				} catch (Throwable ignored) {
+				}
+			}
+		}
+	}
+
+	/** Builds a native ManifoldPolygons from Java contour arrays (default fill). */
+	private MemorySegment javaToPolygons(Arena arena, ArrayList<double[][]> contours) throws Throwable {
+		// Each contour is itself a heap-allocated ManifoldSimplePolygon
+		// (std::vector<vec2>), built here and destroyed in a finally block;
+		// manifold_polygons copies the data, so nothing needs to outlive the call.
+		ArrayList<MemorySegment> owned = new ArrayList<>(contours.size());
+		MemorySegment polygons = null;
+		try {
+			MemorySegment contourPtrs = arena.allocate(ValueLayout.ADDRESS, contours.size());
+			for (int c = 0; c < contours.size(); c++) {
+				double[][] contour = contours.get(c);
+				if (contour == null || contour.length == 0)
+					throw new IllegalArgumentException("contours must not contain empty contours");
+				MemorySegment pts = arena.allocate(contour.length * 2L * Double.BYTES);
+				for (int i = 0; i < contour.length; i++) {
+					if (contour[i] == null || contour[i].length != 2)
+						throw new IllegalArgumentException("each point must be a double[2] of {x, y}");
+					pts.setAtIndex(ValueLayout.JAVA_DOUBLE, i * 2, contour[i][0]);
+					pts.setAtIndex(ValueLayout.JAVA_DOUBLE, i * 2 + 1, contour[i][1]);
+				}
+				MemorySegment spMem = (MemorySegment) functions.get("manifold_alloc_simple_polygon").invoke();
+				MemorySegment sp = (MemorySegment) functions.get("manifold_simple_polygon").invoke(spMem, pts,
+						(long) contour.length);
+				owned.add(sp);
+				contourPtrs.setAtIndex(ValueLayout.ADDRESS, c, sp);
+			}
+			MemorySegment mem = (MemorySegment) functions.get("manifold_alloc_polygons").invoke();
+			polygons = (MemorySegment) functions.get("manifold_polygons").invoke(mem, contourPtrs,
+					(long) contours.size());
+		} finally {
+			for (MemorySegment sp : owned) {
+				try {
+					functions.get("manifold_delete_simple_polygon").invoke(sp);
+				} catch (Throwable ignored) {
+				}
+			}
+		}
+		return polygons;
 	}
 
 	// ===== Primitives =====

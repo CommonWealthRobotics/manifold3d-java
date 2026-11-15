@@ -53,7 +53,10 @@ manifold::Polygons* from_c(ManifoldPolygons* m);
 manifold::MeshGL* from_c(ManifoldMeshGL* m);
 manifold::MeshGL64* from_c(ManifoldMeshGL64* m);
 OpType from_c(ManifoldOpType op);
-CrossSection::FillRule from_c(ManifoldFillRule fillrule);
+// The core's fill-rule concept moved from CrossSection::FillRule to the
+// WindRule-based named constructors. FillRule::Negative has no core
+// equivalent and maps to Add (positive), the closest available rule.
+CrossSection from_c_fill_rule(ManifoldFillRule fillrule, const Polygons& polys);
 CrossSection::JoinType from_c(ManifoldJoinType jt);
 manifold::Box* from_c(ManifoldBox* m);
 manifold::Rect* from_c(ManifoldRect* r);
