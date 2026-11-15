@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <limits>
-
 #include "csg_tree.h"
 #include "disjoint_sets.h"
 #include "impl.h"
@@ -22,71 +20,88 @@
 #include "parallel.h"
 
 namespace manifold {
-/**
- * Constructs a smooth version of the input mesh by creating tangents; this
- * method will throw if you have supplied tangents with your mesh already. The
- * actual triangle resolution is unchanged; use the Refine() method to
- * interpolate to a higher-resolution curve.
- *
- * By default, every edge is calculated for maximum smoothness (very much
- * approximately), attempting to minimize the maximum mean Curvature magnitude.
- * No higher-order derivatives are considered, as the interpolation is
- * independent per triangle, only sharing constraints on their boundaries.
- *
- * @param meshGL input MeshGL.
- * @param sharpenedEdges If desired, you can supply a vector of sharpened
- * halfedges, which should in general be a small subset of all halfedges. Order
- * of entries doesn't matter, as each one specifies the desired smoothness
- * (between zero and one, with one the default for all unspecified halfedges)
- * and the halfedge index (3 * triangle index + [0,1,2] where 0 is the edge
- * between triVert 0 and 1, etc).
- *
- * At a smoothness value of zero, a sharp crease is made. The smoothness is
- * interpolated along each edge, so the specified value should be thought of as
- * an average. Where exactly two sharpened edges meet at a vertex, their
- * tangents are rotated to be colinear so that the sharpened edge can be
- * continuous. Vertices with only one sharpened edge are completely smooth,
- * allowing sharpened edges to smoothly vanish at termination. A single vertex
- * can be sharpened by sharping all edges that are incident on it, allowing
- * cones to be formed.
- */
-Manifold Manifold::Smooth(const MeshGL& meshGL,
-                          const std::vector<Smoothness>& sharpenedEdges) {
-  return Manifold(MakeSmoothImpl(meshGL, sharpenedEdges));
-}
+namespace {
+std::shared_ptr<Manifold::Impl> ExtrudeImpl(const Polygons& crossSection,
+                                            double height, int nDivisions,
+                                            double twistDegrees, vec2 scaleTop,
+                                            double zOffset = 0.0,
+                                            bool flipZ = false) {
+  scaleTop.x = std::max(scaleTop.x, 0.0);
+  scaleTop.y = std::max(scaleTop.y, 0.0);
 
-/**
- * Constructs a smooth version of the input mesh by creating tangents; this
- * method will throw if you have supplied tangents with your mesh already. The
- * actual triangle resolution is unchanged; use the Refine() method to
- * interpolate to a higher-resolution curve.
- *
- * By default, every edge is calculated for maximum smoothness (very much
- * approximately), attempting to minimize the maximum mean Curvature magnitude.
- * No higher-order derivatives are considered, as the interpolation is
- * independent per triangle, only sharing constraints on their boundaries.
- *
- * @param meshGL64 input MeshGL64.
- * @param sharpenedEdges If desired, you can supply a vector of sharpened
- * halfedges, which should in general be a small subset of all halfedges. Order
- * of entries doesn't matter, as each one specifies the desired smoothness
- * (between zero and one, with one the default for all unspecified halfedges)
- * and the halfedge index (3 * triangle index + [0,1,2] where 0 is the edge
- * between triVert 0 and 1, etc).
- *
- * At a smoothness value of zero, a sharp crease is made. The smoothness is
- * interpolated along each edge, so the specified value should be thought of as
- * an average. Where exactly two sharpened edges meet at a vertex, their
- * tangents are rotated to be colinear so that the sharpened edge can be
- * continuous. Vertices with only one sharpened edge are completely smooth,
- * allowing sharpened edges to smoothly vanish at termination. A single vertex
- * can be sharpened by sharping all edges that are incident on it, allowing
- * cones to be formed.
- */
-Manifold Manifold::Smooth(const MeshGL64& meshGL64,
-                          const std::vector<Smoothness>& sharpenedEdges) {
-  return Manifold(MakeSmoothImpl(meshGL64, sharpenedEdges));
+  auto pImpl_ = std::make_shared<Manifold::Impl>();
+  ++nDivisions;
+  auto& vertPos = pImpl_->vertPos_;
+  Vec<ivec3> triVertsDH;
+  auto& triVerts = triVertsDH;
+  int nCrossSection = 0;
+  bool isCone = scaleTop.x == 0.0 && scaleTop.y == 0.0;
+  size_t idx = 0;
+  PolygonsIdx polygonsIndexed;
+  for (auto& poly : crossSection) {
+    nCrossSection += poly.size();
+    SimplePolygonIdx simpleIndexed;
+    for (const vec2& polyVert : poly) {
+      vertPos.push_back({polyVert.x, polyVert.y, 0.0});
+      simpleIndexed.push_back({polyVert, static_cast<int>(idx++)});
+    }
+    polygonsIndexed.push_back(simpleIndexed);
+  }
+  for (int i = 1; i < nDivisions + 1; ++i) {
+    double alpha = i / double(nDivisions);
+    double phi = alpha * twistDegrees;
+    vec2 scale = la::lerp(vec2(1.0), scaleTop, alpha);
+    mat2 rotation({cosd(phi), sind(phi)}, {-sind(phi), cosd(phi)});
+    mat2 transform = mat2({scale.x, 0.0}, {0.0, scale.y}) * rotation;
+    size_t j = 0;
+    size_t idx = 0;
+    for (const auto& poly : crossSection) {
+      for (size_t vert = 0; vert < poly.size(); ++vert) {
+        size_t offset = idx + nCrossSection * i;
+        size_t thisVert = vert + offset;
+        size_t lastVert = (vert == 0 ? poly.size() : vert) - 1 + offset;
+        if (i == nDivisions && isCone) {
+          triVerts.push_back(ivec3(nCrossSection * i + j,
+                                   lastVert - nCrossSection,
+                                   thisVert - nCrossSection));
+        } else {
+          vec2 pos = transform * poly[vert];
+          vertPos.push_back({pos.x, pos.y, height * alpha});
+          triVerts.push_back(
+              ivec3(thisVert, lastVert, thisVert - nCrossSection));
+          triVerts.push_back(ivec3(lastVert, lastVert - nCrossSection,
+                                   thisVert - nCrossSection));
+        }
+      }
+      ++j;
+      idx += poly.size();
+    }
+  }
+  if (isCone)
+    for (size_t j = 0; j < crossSection.size();
+         ++j)  // Duplicate vertex for Genus
+      vertPos.push_back({0.0, 0.0, height});
+  std::vector<ivec3> top = TriangulateIdx(polygonsIndexed);
+  for (const ivec3& tri : top) {
+    triVerts.push_back({tri[0], tri[2], tri[1]});
+    if (!isCone) triVerts.push_back(tri + nCrossSection * nDivisions);
+  }
+
+  if (flipZ) {
+    for (vec3& v : vertPos) v.z = zOffset - v.z;
+    for (ivec3& tri : triVerts) std::swap(tri[1], tri[2]);
+  } else if (zOffset != 0.0) {
+    for (vec3& v : vertPos) v.z += zOffset;
+  }
+
+  pImpl_->CreateHalfedges(triVertsDH);
+  pImpl_->CalculateBBox();
+  pImpl_->SortGeometry();
+  pImpl_->SetFaceAndVertNormals();
+  pImpl_->InitializeOriginal();
+  return pImpl_;
 }
+}  // namespace
 
 /**
  * Constructs a tetrahedron centered at the origin with one vertex at (1,1,1)
@@ -132,16 +147,12 @@ Manifold Manifold::Cylinder(double height, double radiusLow, double radiusHigh,
   if (height <= 0.0 || radiusLow < 0.0) {
     return Invalid();
   }
-  if (radiusLow == 0.0) {
+  const bool flip = radiusLow == 0.0;
+  if (flip) {
     if (radiusHigh <= 0.0) {
       return Invalid();
     }
-    // Cone with apex at bottom: create the centered apex-at-top version and
-    // mirror it
-    Manifold cone = Cylinder(height, radiusHigh, 0.0, circularSegments, true);
-    cone = cone.Mirror(vec3(0.0, 0.0, 1.0));
-    if (!center) cone = cone.Translate(vec3(0.0, 0.0, height / 2.0));
-    return cone.AsOriginal();
+    std::swap(radiusLow, radiusHigh);
   }
   const double scale = radiusHigh >= 0.0 ? radiusHigh / radiusLow : 1.0;
   const double radius = fmax(radiusLow, radiusHigh);
@@ -154,10 +165,9 @@ Manifold Manifold::Cylinder(double height, double radiusLow, double radiusHigh,
     circle[i] = {radiusLow * cosd(dPhi * i), radiusLow * sind(dPhi * i)};
   }
 
-  Manifold cylinder = Manifold::Extrude({circle}, height, 0, 0.0, vec2(scale));
-  if (center)
-    cylinder = cylinder.Translate(vec3(0.0, 0.0, -height / 2.0)).AsOriginal();
-  return cylinder;
+  const double zOffset = (flip ? height : 0.0) - (center ? height / 2.0 : 0.0);
+  return Manifold(
+      ExtrudeImpl({circle}, height, 0, 0.0, vec2(scale), zOffset, flip));
 }
 
 /**
@@ -187,11 +197,10 @@ Manifold Manifold::Sphere(double radius, int circularSegments) {
                if (std::isnan(v.x)) v = vec3(0.0);
              });
   // Ignore preceding octahedron.
-  pImpl_->InitializeOriginal();
   pImpl_->CalculateBBox();
-  pImpl_->SetEpsilon();
   pImpl_->SortGeometry();
-  pImpl_->SetNormalsAndCoplanar();
+  pImpl_->SetFaceAndVertNormals();
+  pImpl_->InitializeOriginal();
   return Manifold(pImpl_);
 }
 
@@ -217,94 +226,11 @@ Manifold Manifold::Sphere(double radius, int circularSegments) {
 Manifold Manifold::Extrude(const Polygons& crossSection, double height,
                            int nDivisions, double twistDegrees, vec2 scaleTop) {
   ZoneScoped;
-  if (!(height > 0.0) || !std::isfinite(height) || nDivisions < 0 ||
-      !std::isfinite(twistDegrees) || !la::all(la::isfinite(scaleTop))) {
+  if (crossSection.size() == 0 || height <= 0.0) {
     return Invalid();
   }
-  // Contours with fewer than 3 verts have no area.
-  Polygons polygons;
-  for (const SimplePolygon& poly : crossSection) {
-    if (poly.size() < 3) continue;
-    for (const vec2& v : poly) {
-      if (!la::all(la::isfinite(v))) return Invalid();
-    }
-    polygons.push_back(poly);
-  }
-  if (polygons.empty()) return Invalid();
-  // Vert indices are int.
-  int64_t numVert = 0;
-  for (const SimplePolygon& poly : polygons) numVert += poly.size();
-  if (numVert * (nDivisions + int64_t(2)) > std::numeric_limits<int>::max()) {
-    return PropagateStatus(Error::ResultTooLarge);
-  }
-
-  scaleTop.x = std::max(scaleTop.x, 0.0);
-  scaleTop.y = std::max(scaleTop.y, 0.0);
-
-  auto pImpl_ = std::make_shared<Impl>();
-  ++nDivisions;
-  auto& vertPos = pImpl_->vertPos_;
-  Vec<ivec3> triVertsDH;
-  auto& triVerts = triVertsDH;
-  int nCrossSection = 0;
-  bool isCone = scaleTop.x == 0.0 && scaleTop.y == 0.0;
-  size_t idx = 0;
-  PolygonsIdx polygonsIndexed;
-  for (auto& poly : polygons) {
-    nCrossSection += poly.size();
-    SimplePolygonIdx simpleIndexed;
-    for (const vec2& polyVert : poly) {
-      vertPos.push_back({polyVert.x, polyVert.y, 0.0});
-      simpleIndexed.push_back({polyVert, static_cast<int>(idx++)});
-    }
-    polygonsIndexed.push_back(simpleIndexed);
-  }
-  for (int i = 1; i < nDivisions + 1; ++i) {
-    double alpha = i / double(nDivisions);
-    double phi = alpha * twistDegrees;
-    vec2 scale = la::lerp(vec2(1.0), scaleTop, alpha);
-    mat2 rotation({cosd(phi), sind(phi)}, {-sind(phi), cosd(phi)});
-    mat2 transform = mat2({scale.x, 0.0}, {0.0, scale.y}) * rotation;
-    size_t j = 0;
-    size_t idx = 0;
-    for (const auto& poly : polygons) {
-      for (size_t vert = 0; vert < poly.size(); ++vert) {
-        size_t offset = idx + nCrossSection * i;
-        size_t thisVert = vert + offset;
-        size_t lastVert = (vert == 0 ? poly.size() : vert) - 1 + offset;
-        if (i == nDivisions && isCone) {
-          triVerts.push_back(ivec3(nCrossSection * i + j,
-                                   lastVert - nCrossSection,
-                                   thisVert - nCrossSection));
-        } else {
-          vec2 pos = transform * poly[vert];
-          vertPos.push_back({pos.x, pos.y, height * alpha});
-          triVerts.push_back(
-              ivec3(thisVert, lastVert, thisVert - nCrossSection));
-          triVerts.push_back(ivec3(lastVert, lastVert - nCrossSection,
-                                   thisVert - nCrossSection));
-        }
-      }
-      ++j;
-      idx += poly.size();
-    }
-  }
-  if (isCone)
-    for (size_t j = 0; j < polygons.size(); ++j)  // Duplicate vertex for Genus
-      vertPos.push_back({0.0, 0.0, height});
-  std::vector<ivec3> top = TriangulateIdx(polygonsIndexed);
-  for (const ivec3& tri : top) {
-    triVerts.push_back({tri[0], tri[2], tri[1]});
-    if (!isCone) triVerts.push_back(tri + nCrossSection * nDivisions);
-  }
-
-  pImpl_->CreateHalfedges(triVertsDH);
-  pImpl_->InitializeOriginal();
-  pImpl_->CalculateBBox();
-  pImpl_->SetEpsilon();
-  pImpl_->SortGeometry();
-  pImpl_->SetNormalsAndCoplanar();
-  return Manifold(pImpl_);
+  return Manifold(
+      ExtrudeImpl(crossSection, height, nDivisions, twistDegrees, scaleTop));
 }
 
 /**
@@ -326,7 +252,6 @@ Manifold Manifold::Revolve(const Polygons& crossSection, int circularSegments,
   Polygons polygons;
   double radius = 0;
   for (const SimplePolygon& poly : crossSection) {
-    if (poly.size() < 3) continue;
     size_t i = 0;
     while (i < poly.size() && poly[i].x < 0) {
       ++i;
@@ -445,11 +370,10 @@ Manifold Manifold::Revolve(const Polygons& crossSection, int circularSegments,
   }
 
   pImpl_->CreateHalfedges(triVertsDH);
-  pImpl_->InitializeOriginal();
   pImpl_->CalculateBBox();
-  pImpl_->SetEpsilon();
   pImpl_->SortGeometry();
-  pImpl_->SetNormalsAndCoplanar();
+  pImpl_->SetFaceAndVertNormals();
+  pImpl_->InitializeOriginal();
   return Manifold(pImpl_);
 }
 
@@ -497,9 +421,6 @@ std::vector<Manifold> Manifold::Decompose() const {
   std::vector<Manifold> meshes;
   for (int i = 0; i < numComponents; ++i) {
     auto impl = std::make_shared<Impl>();
-    // inherit original object's precision
-    impl->epsilon_ = pImpl_->epsilon_;
-    impl->tolerance_ = pImpl_->tolerance_;
 
     Vec<int> vertNew2Old(numVert);
     const int nVert =
