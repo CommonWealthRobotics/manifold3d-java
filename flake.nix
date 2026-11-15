@@ -9,7 +9,7 @@
     flake-utils.lib.eachDefaultSystem
       (system:
       let
-        manifold-version = "3.5.2";
+        manifold-version = "3.5.5";
         pkgs = import nixpkgs {
           inherit system;
         };

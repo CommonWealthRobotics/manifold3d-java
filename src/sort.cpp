@@ -13,7 +13,7 @@
 // limitations under the License.
 
 #include <atomic>
-#include <cstdint>
+#include <set>
 
 #include "disjoint_sets.h"
 #include "impl.h"
@@ -31,23 +31,6 @@ uint32_t MortonCode(vec3 position, Box bBox) {
   if (std::isnan(position.x)) return kNoCode;
 
   return Collider::MortonCode(position, bBox);
-}
-
-uint64_t EncodeOpenEdge(int first, int second) {
-  const uint32_t low = static_cast<uint32_t>(std::min(first, second));
-  const uint32_t high = static_cast<uint32_t>(std::max(first, second));
-  const uint64_t direction = first > second ? 1 : 0;
-  // Vertex indices are non-negative ints, so 31 bits each leaves one bit for
-  // direction. Keeping direction in the low bit groups opposing edges together
-  // when the encoded values are sorted.
-  return (static_cast<uint64_t>(low) << 32) |
-         (static_cast<uint64_t>(high) << 1) | direction;
-}
-
-int OpenEdgeFirst(uint64_t edge) {
-  const int low = static_cast<int>(edge >> 32);
-  const int high = static_cast<int>((edge >> 1) & 0x7FFFFFFFu);
-  return (edge & 1) == 0 ? low : high;
 }
 
 struct ReindexFace {
@@ -78,70 +61,53 @@ struct ReindexFace {
 template <typename Precision, typename I>
 bool MergeMeshGLP(MeshGLP<Precision, I>& mesh) {
   ZoneScoped;
+  std::multiset<std::pair<int, int>> openEdges;
 
-  std::vector<int> merge(mesh.NumVert());
+  if (mesh.numProp < 3 ||
+      mesh.mergeFromVert.size() != mesh.mergeToVert.size()) {
+    return false;
+  }
+  const auto numVert = mesh.NumVert();
+  const auto numTri = mesh.NumTri();
+  const auto inRange = [numVert](I v) { return v < numVert; };
+  if (!std::all_of(mesh.mergeFromVert.begin(), mesh.mergeFromVert.end(),
+                   inRange) ||
+      !std::all_of(mesh.mergeToVert.begin(), mesh.mergeToVert.end(), inRange) ||
+      !std::all_of(mesh.triVerts.begin(), mesh.triVerts.end(), inRange)) {
+    return false;
+  }
+
+  std::vector<int> merge(numVert);
   std::iota(merge.begin(), merge.end(), 0);
   for (size_t i = 0; i < mesh.mergeFromVert.size(); ++i) {
     merge[mesh.mergeFromVert[i]] = mesh.mergeToVert[i];
   }
 
-  const auto numVert = mesh.NumVert();
-  const auto numTri = mesh.NumTri();
-  Vec<uint64_t> edges(3 * numTri);
   const int next[3] = {1, 2, 0};
-  for_each_n(autoPolicy(numTri, 1e5), countAt(0_uz), numTri,
-             [&edges, &merge, &mesh, &next](size_t tri) {
-               for (int i : {0, 1, 2}) {
-                 const int first = merge[mesh.triVerts[3 * tri + i]];
-                 const int second = merge[mesh.triVerts[3 * tri + next[i]]];
-                 edges[3 * tri + i] = EncodeOpenEdge(first, second);
-               }
-             });
-  stable_sort(edges.begin(), edges.end());
-
-  Vec<int> openVerts;
-  openVerts.reserve(edges.size());
-  // Opposing directed edges cancel in pairs. Repeated edges in the same
-  // direction remain, matching the previous multiset behavior. Collapsed
-  // self-edges likewise remain only when their count is odd.
-  for (size_t begin = 0; begin < edges.size();) {
-    const uint64_t key = edges[begin] >> 1;
-    size_t end = begin + 1;
-    while (end < edges.size() && edges[end] >> 1 == key) {
-      ++end;
-    }
-
-    const int low = static_cast<int>(edges[begin] >> 32);
-    const int high = static_cast<int>((edges[begin] >> 1) & 0x7FFFFFFFu);
-    if (low == high) {
-      if ((end - begin) % 2 == 1) {
-        openVerts.push_back(low);
-      }
-    } else {
-      size_t split = begin;
-      while (split < end && (edges[split] & 1) == 0) {
-        ++split;
-      }
-      const size_t numForward = split - begin;
-      const size_t numReverse = end - split;
-      const size_t numOpen =
-          std::max(numForward, numReverse) - std::min(numForward, numReverse);
-      const uint64_t edge =
-          numForward >= numReverse ? edges[begin] : edges[end - 1];
-      for (size_t i = 0; i < numOpen; ++i) {
-        openVerts.push_back(OpenEdgeFirst(edge));
+  for (size_t tri = 0; tri < numTri; ++tri) {
+    for (int i : {0, 1, 2}) {
+      auto edge = std::make_pair(merge[mesh.triVerts[3 * tri + next[i]]],
+                                 merge[mesh.triVerts[3 * tri + i]]);
+      auto it = openEdges.find(edge);
+      if (it == openEdges.end()) {
+        std::swap(edge.first, edge.second);
+        openEdges.insert(edge);
+      } else {
+        openEdges.erase(it);
       }
     }
-    begin = end;
   }
-  if (openVerts.empty()) {
+  if (openEdges.empty()) {
     return false;
   }
-  // The multiset yielded first vertices in ascending order. Preserve that
-  // ordering so equal Morton codes keep the same deterministic merge roots.
-  stable_sort(openVerts.begin(), openVerts.end());
 
-  const auto numOpenVert = openVerts.size();
+  const auto numOpenVert = openEdges.size();
+  Vec<int> openVerts(numOpenVert);
+  int i = 0;
+  for (const auto& edge : openEdges) {
+    const int vert = edge.first;
+    openVerts[i++] = vert;
+  }
 
   Vec<Precision> vertPropD(mesh.vertProperties);
   Box bBox;
@@ -390,8 +356,8 @@ void Manifold::Impl::CompactProps(ExecutionContext::Impl* ctx) {
   auto policy = autoPolicy(numVerts, 1e5);
 
   for_each_n(policy, countAt(0), halfedge_.size(), ctx, [this, &keep](int idx) {
-    AtomicRef<int>(keep[halfedge_.Prop(idx)])
-        .store(1, std::memory_order_relaxed);
+    reinterpret_cast<std::atomic<int>*>(&keep[halfedge_.Prop(idx)])
+        ->store(1, std::memory_order_relaxed);
   });
   if (IsCancelled(ctx)) return;
   Vec<int> propOld2New(numVerts + 1, 0);
@@ -605,11 +571,12 @@ void Manifold::Impl::ReorderHalfedges(ExecutionContext::Impl* ctx) {
 
 /**
  * Updates the mergeFromVert and mergeToVert vectors in order to create a
- * manifold solid. If the MeshGL is already manifold, no change will occur and
- * the function will return false. Otherwise, this will merge verts along open
- * edges within tolerance (the maximum of the MeshGL tolerance and the
- * baseline bounding-box tolerance), keeping any from the existing merge
- * vectors, and return true.
+ * manifold solid. If the MeshGL is already manifold, or is invalid (fewer than
+ * 3 properties, merge vectors of different lengths, or out-of-range indices),
+ * no change will occur and the function will return false. Otherwise, this
+ * will merge verts along open edges within tolerance (the maximum of the MeshGL
+ * tolerance and the baseline bounding-box tolerance), keeping any from the
+ * existing merge vectors, and return true.
  *
  * There is no guarantee the result will be manifold - this is a best-effort
  * helper function designed primarily to aid in the case where a manifold

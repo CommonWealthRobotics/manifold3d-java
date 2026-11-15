@@ -18,7 +18,7 @@ jobs:
       id-token: write  # Required for OIDC
       contents: read
     steps:
-    - uses: actions/checkout@v7
+    - uses: actions/checkout@v6
       with:
         ref: ${{ (github.event_name == 'workflow_dispatch' && inputs.ref) || github.ref }}
 
@@ -33,11 +33,14 @@ jobs:
     - name: Update npm # Ensure npm 11.5.1 or later for trusted publishing
       run: npm install -g npm@latest
 
-    - name: Install cmake
-      run: sudo apt-get update && sudo apt-get install -y cmake
+    - name: Install apt packages
+      uses: awalsh128/cache-apt-pkgs-action@v1.6.0
+      with:
+        packages: cmake
+        version: 1
 
     - name: Setup EMSDK
-      uses: mymindstorm/setup-emsdk@v16
+      uses: mymindstorm/setup-emsdk@v14
       with:
         version: 5.0.2
 
