@@ -31,7 +31,7 @@
  * including manifold in another project.
  */
 
-import type * as GLTFTransform from '@gltf-transform/core';
+import * as GLTFTransform from '@gltf-transform/core';
 
 import type {Manifold, Mesh, Vec3} from '../manifold.d.ts';
 
@@ -41,7 +41,7 @@ import {VisualizationGLTFNode} from './gltf-node.ts';
 import * as import3MF from './import-3mf.ts';
 import {setMaterialByID} from './material.ts';
 import {euler2quat, multiplyQuat} from './math.ts';
-import {findExtension, findMimeType, isNode} from './util.ts';
+import {fetchWithRetry, findExtension, findMimeType, isNode} from './util.ts';
 import {getManifoldModuleSync} from './wasm.ts';
 
 /**
@@ -304,7 +304,7 @@ export async function readModel(
 export async function fetchModel(
     uri: string, options: ImportOptions = {}): Promise<GLTFTransform.Document> {
   const importer = getImporter(options.mimetype ?? uri);
-  const response = await fetch(uri);
+  const response = await fetchWithRetry(uri);
   const blob = await response.blob();
   return importTransform(
       await importer.fromArrayBuffer(await blob.arrayBuffer(), options));
@@ -369,16 +369,27 @@ export async function readFile(filename: string, options: ImportOptions = {}) {
  * ManifoldCAD defines up as '+Z'.
  */
 function importTransform(doc: GLTFTransform.Document): GLTFTransform.Document {
-  // Find top level nodes and correct their scale and orientation.
-  for (const sourceNode of doc.getRoot().listNodes()) {
-    if (sourceNode.getParentNode()) continue;
+  for (const scene of doc.getRoot().listScenes()) {
+    const nodes =
+        scene.listChildren().filter(c => c instanceof GLTFTransform.Node);
+    const rotate = euler2quat([90, 0, 0]);
+    const scale = 1000;
 
-    const scale = sourceNode.getScale();
-    sourceNode.setScale([scale[0] * 1000, scale[1] * 1000, scale[2] * 1000]);
+    if (nodes.length === 1) {
+      // If there's just one node, transform it in place.
+      const [node] = nodes;
+      node.setScale(node.getScale().map(n => n * scale) as GLTFTransform.vec3);
+      node.setRotation(multiplyQuat(node.getRotation(), rotate));
 
-    const original = sourceNode.getRotation();
-    const rotated = multiplyQuat(original, euler2quat([90, 0, 0]));
-    sourceNode.setRotation(rotated);
+    } else {
+      // If there's more than one node, create a parent node and transform that.
+      const parent = doc.createNode();
+      for (const node of nodes) parent.addChild(node);
+
+      parent.setScale([scale, scale, scale]);
+      parent.setRotation(rotate);
+      scene.addChild(parent);
+    }
   }
   return doc;
 }
@@ -551,7 +562,7 @@ function gltfMeshToMesh(gltfmesh: GLTFTransform.Mesh): Mesh {
       // 'POSITION' is always present; we don't need to specify it.
       attributes: attributes.filter(x => x !== 'POSITION'),
       alpha: material.getAlpha(),
-      baseColorFactor: material.getBaseColorFactor() as any as Vec3,
+      baseColorFactor: material.getBaseColorFactor().slice(0, 3) as Vec3,
       metallic: material.getMetallicFactor(),
       roughness: material.getRoughnessFactor(),
       name: material.getName(),

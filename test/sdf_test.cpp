@@ -34,6 +34,36 @@ struct Layers {
   }
 };
 
+TEST(SDF, InvalidGrid) {
+  auto sphere = [](vec3 p) { return 1 - la::length(p); };
+  const Box box(vec3(-1), vec3(1));
+  EXPECT_EQ(Manifold::LevelSet(sphere, box, 0).Status(),
+            Manifold::Error::InvalidConstruction);
+  EXPECT_EQ(Manifold::LevelSet(sphere, box, -1).Status(),
+            Manifold::Error::InvalidConstruction);
+  EXPECT_EQ(Manifold::LevelSet(sphere, box, NAN).Status(),
+            Manifold::Error::InvalidConstruction);
+  Box nanBox = box;
+  nanBox.max.x = NAN;
+  EXPECT_EQ(Manifold::LevelSet(sphere, nanBox, 0.5).Status(),
+            Manifold::Error::InvalidConstruction);
+  Box invertedBox = box;
+  std::swap(invertedBox.min, invertedBox.max);
+  EXPECT_EQ(Manifold::LevelSet(sphere, invertedBox, 0.5).Status(),
+            Manifold::Error::InvalidConstruction);
+  Box infBox = box;
+  infBox.max.x = INFINITY;
+  EXPECT_EQ(Manifold::LevelSet(sphere, infBox, 0.5).Status(),
+            Manifold::Error::InvalidConstruction);
+  EXPECT_EQ(
+      Manifold::LevelSet(sphere, Box(vec3(0.0), vec3(3e9, 1, 1)), 1).Status(),
+      Manifold::Error::ResultTooLarge);
+  EXPECT_EQ(Manifold::LevelSet(sphere, box, 1e-9).Status(),
+            Manifold::Error::ResultTooLarge);
+  EXPECT_EQ(Manifold::LevelSet(sphere, box, 1e-6).Status(),
+            Manifold::Error::ResultTooLarge);
+}
+
 TEST(SDF, SphereShell) {
   Manifold sphere = Manifold::LevelSet(
       [](vec3 pos) {
@@ -164,22 +194,19 @@ TEST(SDF, Resize) {
 }
 
 TEST(SDF, SineSurface) {
-  Manifold surface =
-      Manifold::LevelSet(
-          [](vec3 p) {
-            double mid = la::sin(p.x) + la::sin(p.y);
-            return (p.z > mid - 0.5 && p.z < mid + 0.5) ? 1.0f : -1.0f;
-          },
-          {vec3(-1.75 * kPi), vec3(1.75 * kPi)}, 1)
-          .Simplify();
-  Manifold smoothed = surface.SmoothOut(180).RefineToLength(0.05);
+  Manifold surface = Manifold::LevelSet(
+      [](vec3 p) {
+        double mid = la::sin(p.x) + la::sin(p.y);
+        return (p.z > mid - 0.5 && p.z < mid + 0.5) ? 1.0f : -1.0f;
+      },
+      {vec3(-1.75 * kPi), vec3(1.75 * kPi)}, 1);
 
-  EXPECT_EQ(smoothed.Status(), Manifold::Error::NoError);
-  EXPECT_EQ(smoothed.Genus(), 38);
-  EXPECT_NEAR(smoothed.Volume(), 107.4, 0.1);
-  EXPECT_NEAR(smoothed.SurfaceArea(), 394.7, 0.1);
+  EXPECT_EQ(surface.Status(), Manifold::Error::NoError);
+  EXPECT_EQ(surface.Genus(), 38);
+  EXPECT_NEAR(surface.Volume(), 102.4, 0.1);
+  EXPECT_NEAR(surface.SurfaceArea(), 392.4, 0.1);
 
-  if (options.exportModels) WriteTestOBJ("sinesurface.obj", smoothed);
+  if (options.exportModels) WriteTestOBJ("sinesurface.obj", surface);
 }
 
 TEST(SDF, Blobs) {

@@ -15,7 +15,9 @@
 #include "manifold/polygon.h"
 
 #include <algorithm>
+#ifndef MANIFOLD_NO_IOSTREAM
 #include <fstream>
+#endif
 #include <limits>
 
 #include "test.h"
@@ -79,6 +81,7 @@ class PolygonTestFixture : public testing::Test {
   void TestBody() { TestPoly(polys, expectedNumTri, epsilon); }
 };
 
+#ifndef MANIFOLD_NO_IOSTREAM
 void RegisterPolygonTestsFile(const std::string& filename) {
   auto f = std::ifstream(filename);
   EXPECT_TRUE(f.is_open());
@@ -117,8 +120,19 @@ void RegisterPolygonTestsFile(const std::string& filename) {
   }
   f.close();
 }
+#endif
 }  // namespace
 
+TEST(Triangulation, ShortContours) {
+  const SimplePolygon square = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+  EXPECT_TRUE(Triangulate({{}}).empty());
+  EXPECT_TRUE(Triangulate({{{0, 0}}}).empty());
+  EXPECT_TRUE(Triangulate({{{0, 0}, {1, 0}}}).empty());
+  EXPECT_EQ(Triangulate({{}, square}).size(), 2);
+  EXPECT_EQ(Triangulate({square, {{2, 2}}}).size(), 2);
+}
+
+#ifndef MANIFOLD_NO_IOSTREAM
 void RegisterPolygonTests() {
   std::string files[] = {"polygon_corpus.txt", "sponge.txt", "zebra.txt",
                          "zebra3.txt"};
@@ -132,3 +146,9 @@ void RegisterPolygonTests() {
   for (auto f : files) RegisterPolygonTestsFile(dir + "/polygons/" + f);
 #endif
 }
+#else
+// Stub when MANIFOLD_NO_IOSTREAM is set: polygon corpus tests need
+// std::ifstream to load fixtures, so they're skipped. test_main.cpp
+// still calls RegisterPolygonTests(); this stub keeps the link clean.
+void RegisterPolygonTests() {}
+#endif

@@ -205,7 +205,7 @@ Module.setup = function() {
   // Manifold methods
 
   Module.Manifold.prototype.smoothOut = function(
-      minSharpAngle = 60, minSmoothness = 0) {
+      minSharpAngle = 52.5, minSmoothness = 0) {
     return this._SmoothOut(minSharpAngle, minSmoothness);
   };
 
@@ -230,9 +230,34 @@ Module.setup = function() {
     return out;
   };
 
+  Module.Manifold.prototype.warpBatch = function(func) {
+    const wasmFuncPtr = addFunction(function(ptr, count) {
+      const heapF64 = Module.HEAPF64 ?? HEAPF64;
+      if (!heapF64) {
+        throw new Error('WASM heap is not initialized (HEAPF64 unavailable)');
+      }
+      const verts = new Float64Array(heapF64.buffer, ptr, count * 3);
+
+      func(verts, count);
+    }, 'vii');
+
+    const out = this._WarpBatch(wasmFuncPtr);
+    removeFunction(wasmFuncPtr);
+
+    const status = out.status();
+    if (status !== 'NoError') {
+      throw new Module.ManifoldError(status);
+    }
+    return out;
+  };
+
   Module.Manifold.prototype.calculateNormals = function(
-      normalIdx, minSharpAngle = 60) {
+      normalIdx = 0, minSharpAngle = 52.5) {
     return this._CalculateNormals(normalIdx, minSharpAngle);
+  };
+
+  Module.Manifold.prototype.smoothByNormals = function(normalIdx = 0) {
+    return this._SmoothByNormals(normalIdx);
   };
 
   Module.Manifold.prototype.setProperties = function(numProp, func) {
@@ -304,6 +329,20 @@ Module.setup = function() {
     return result;
   };
 
+  Module.Manifold.prototype.rayCast = function(origin, endpoint) {
+    const vec = this._RayCast(vararg2vec3([origin]), vararg2vec3([endpoint]));
+    const result =
+        fromVec(vec, hit => ({
+                       faceID: hit.faceID,
+                       distance: hit.distance,
+                       position: ['x', 'y', 'z'].map(f => hit.position[f]),
+                       normal: ['x', 'y', 'z'].map(f => hit.normal[f]),
+                     }));
+    vec.delete();
+    return result;
+  };
+
+
   Module.Manifold.prototype.split = function(manifold) {
     const vec = this._Split(manifold);
     const result = fromVec(vec);
@@ -349,6 +388,7 @@ Module.setup = function() {
       faceID,
       halfedgeTangent,
       runTransform,
+      runFlags,
       tolerance = 0
     } = {}) {
       this.numProp = numProp;
@@ -361,6 +401,7 @@ Module.setup = function() {
       this.faceID = faceID;
       this.halfedgeTangent = halfedgeTangent;
       this.runTransform = runTransform;
+      this.runFlags = runFlags;
       this.tolerance = tolerance;
     }
 
@@ -410,6 +451,16 @@ Module.setup = function() {
       mat4[15] = 1;
       return mat4;
     }
+
+    backside(run) {
+      return this.runFlags != null && run < this.runFlags.length &&
+          (this.runFlags[run] & 1) !== 0;
+    }
+
+    hasNormals(run) {
+      return this.runFlags != null && run < this.runFlags.length &&
+          (this.runFlags[run] & 2) !== 0;
+    }
   }
 
   Module.Mesh = Mesh;
@@ -450,8 +501,16 @@ Module.setup = function() {
         break;
       case 'FaceIDWrongLength':
         message = 'Face ID vector has wrong length';
+        break;
       case 'InvalidConstruction':
         message = 'Manifold constructed with invalid parameters';
+        break;
+      case 'ResultTooLarge':
+        message = 'Result exceeds maximum size';
+        break;
+      case 'InvalidTangents':
+        message = 'Invalid halfedge tangents';
+        break;
     }
 
     const base = Error.apply(this, [message, ...args]);
@@ -661,6 +720,40 @@ Module.setup = function() {
     }, 'di');
     const out =
         Module._LevelSet(wasmFuncPtr, bounds2, edgeLength, level, tolerance);
+    removeFunction(wasmFuncPtr);
+    return out;
+  };
+
+  // ctx-aware static factories: mirror Manifold.ofMesh / smooth / levelSet but
+  // run under this ExecutionContext so progress/cancellation are observed.
+  Module.ExecutionContext.prototype.fromMesh = function(mesh) {
+    return this._FromMesh(mesh);
+  };
+
+  Module.ExecutionContext.prototype.smooth = function(
+      mesh, sharpenedEdges = []) {
+    const sharp = new Module.Vector_smoothness();
+    toVec(sharp, sharpenedEdges);
+    const result = this._Smooth(mesh, sharp);
+    sharp.delete();
+    return result;
+  };
+
+  Module.ExecutionContext.prototype.levelSet = function(
+      sdf, bounds, edgeLength, level = 0, tolerance = -1) {
+    const bounds2 = {
+      min: {x: bounds.min[0], y: bounds.min[1], z: bounds.min[2]},
+      max: {x: bounds.max[0], y: bounds.max[1], z: bounds.max[2]},
+    };
+    const wasmFuncPtr = addFunction(function(vec3Ptr) {
+      const x = getValue(vec3Ptr, 'double');
+      const y = getValue(vec3Ptr + 8, 'double');
+      const z = getValue(vec3Ptr + 16, 'double');
+      const vert = [x, y, z];
+      return sdf(vert);
+    }, 'di');
+    const out =
+        this._LevelSet(wasmFuncPtr, bounds2, edgeLength, level, tolerance);
     removeFunction(wasmFuncPtr);
     return out;
   };

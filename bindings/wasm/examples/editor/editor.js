@@ -15,15 +15,13 @@
 // '?url' is vite convention to reference a static asset.
 // vite will package the asset and provide a proper URL.
 import '@google/model-viewer';
+import 'monaco-editor/esm/vs/editor/browser/widget/codeEditor/editor.css';
+import 'monaco-editor/esm/vs/editor/standalone/browser/standalone-tokens.css';
 
 import esbuildWasmUrl from 'esbuild-wasm/esbuild.wasm?url';
 import ManifoldWorker from 'manifold-3d/lib/worker.bundled.js?worker';
 import manifoldWasmUrl from 'manifold-3d/manifold.wasm?url';
-import {AutoTypings, JsDelivrSourceResolver, LocalStorageCache} from 'monaco-editor-auto-typings';
-import * as monaco from 'monaco-editor/esm/vs/editor/editor.main';
-// '?worker' is vite convention to load a module as a web worker.
-import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
-import tsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker';
+import {Box3, BufferGeometry, CanvasTexture, Float32BufferAttribute, Group, LineBasicMaterial, LineSegments, Mesh, MeshBasicMaterial, PlaneGeometry, SkinnedMesh,} from 'three';
 
 const CODE_START = '<code>';
 // Loaded globally by examples.js
@@ -32,6 +30,9 @@ const exampleFunctions = self.examples;
 if (navigator.serviceWorker) {
   const params = new URLSearchParams(window.location.search);
   const disableServiceWorker = params.has('no-sw');
+  const isLocalhost = window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1';
+  const isDevEnv = import.meta.env.DEV;
 
   if (window.caches) {
     window.caches.keys().then(keys => {
@@ -42,7 +43,8 @@ if (navigator.serviceWorker) {
     });
   }
 
-  if (disableServiceWorker) {
+  // Disable the service worker if asked, in development, or on localhost.
+  if (disableServiceWorker || isDevEnv || isLocalhost) {
     // Explicit escape hatch for debugging cache-related issues.
     navigator.serviceWorker.getRegistrations().then(registrations => {
       registrations.forEach(registration => registration.unregister());
@@ -76,7 +78,107 @@ if (navigator.serviceWorker) {
   }
 }
 
-let editor = undefined;
+let editor = null;
+let monaco = null;
+let monacoModulesPromise = null;
+let monacoSuggestPromise = null;
+let monacoNavigationPromise = null;
+let monacoContributionsReady = false;
+let autoTypings = null;
+let autoTypingsPromise = null;
+let esbuildWasmPreloadPromise = null;
+let updateTypeIndicator = () => {};
+
+function memoizeAsync(loadFn, {resetOnReject = false} = {}) {
+  let promise = null;
+  return () => {
+    if (!promise) {
+      promise = Promise.resolve().then(loadFn);
+      if (resetOnReject) {
+        promise = promise.catch(error => {
+          promise = null;
+          throw error;
+        });
+      }
+    }
+    return promise;
+  };
+}
+
+const loadMonacoModules = memoizeAsync(async () => {
+  monacoModulesPromise =
+      Promise
+          .all([
+            import('monaco-editor/esm/vs/editor/editor.api'),
+            // Load TS tokenizer early so first paint has syntax colors
+            // without waiting for hover-driven language-service activation.
+            import(
+                'monaco-editor/esm/vs/basic-languages/typescript/typescript.contribution'),
+            import(
+                'monaco-editor/esm/vs/language/typescript/monaco.contribution'),
+            // '?worker' is vite convention to load a module as a web worker.
+            import('monaco-editor/esm/vs/editor/editor.worker?worker'),
+            import('monaco-editor/esm/vs/language/typescript/ts.worker?worker'),
+          ])
+          .then(
+              ([monacoModule, _, __, editorWorkerModule, tsWorkerModule]) => ({
+                monaco: monacoModule,
+                editorWorker: editorWorkerModule.default,
+                tsWorker: tsWorkerModule.default,
+              }));
+  return monacoModulesPromise;
+}, {resetOnReject: true});
+
+const ensureMonacoContributionsLoaded = memoizeAsync(
+    () => import('monaco-editor/esm/vs/editor/editor.all').then(module => {
+      monacoContributionsReady = true;
+      return module;
+    }),
+    {resetOnReject: true});
+
+function ensureMonacoSuggestLoaded() {
+  // Load only the minimal contributions needed for autocomplete/parameter
+  // hints. These need to be loaded before editor creation to attach reliably.
+  monacoSuggestPromise =
+      monacoSuggestPromise ?? ensureMonacoSuggestLoadedMemoized();
+  return monacoSuggestPromise;
+}
+
+const ensureMonacoSuggestLoadedMemoized = memoizeAsync(
+    () => Promise.all([
+      import(
+          'monaco-editor/esm/vs/editor/contrib/suggest/browser/suggestController.js'),
+      import(
+          'monaco-editor/esm/vs/editor/contrib/parameterHints/browser/parameterHints.js'),
+    ]),
+    {resetOnReject: true});
+
+function ensureMonacoNavigationLoaded() {
+  // Minimal contributions that enable clickable links + hover + "go to
+  // definition" without pulling the full `editor.all` bundle up-front.
+  monacoNavigationPromise =
+      monacoNavigationPromise ?? ensureMonacoNavigationLoadedMemoized();
+  return monacoNavigationPromise;
+}
+
+const ensureMonacoNavigationLoadedMemoized = memoizeAsync(
+    () => Promise.all([
+      import('monaco-editor/esm/vs/editor/contrib/links/browser/links.js'),
+      import(
+          'monaco-editor/esm/vs/editor/contrib/hover/browser/hoverContribution.js'),
+      import(
+          'monaco-editor/esm/vs/editor/contrib/gotoSymbol/browser/goToCommands.js'),
+    ]),
+    {resetOnReject: true});
+
+const ensureEsbuildWasmPreloaded = memoizeAsync(
+    () => fetch(esbuildWasmUrl, {cache: 'force-cache'}).then(response => {
+      if (!response.ok) {
+        throw new Error(`Failed to preload esbuild.wasm (${response.status})`);
+      }
+      return response.arrayBuffer();
+    }),
+    {resetOnReject: true});
 
 // Pane resizing - draggable pane dividers ---------------------
 
@@ -122,8 +224,8 @@ function setupPaneSplitters() {
   const rightPaneElement = document.getElementById('rightPane');
   const horizontalSplitterElement = document.getElementById('split-x');
   const verticalSplitterElement = document.getElementById('split-y');
-  const leftPaneStorageKey = 'ManifoldCAD:leftPanePercent';
-  const viewerPaneStorageKey = 'ManifoldCAD:viewerPanePercent';
+  const leftPaneStorageKey = 'leftPanePercent';
+  const viewerPaneStorageKey = 'viewerPanePercent';
 
   if (!pageElement || !workbenchElement || !rightPaneElement) return;
 
@@ -201,6 +303,7 @@ shareButton.onclick = () => {
 // File UI ------------------------------------------------------------
 const fileButton = document.querySelector('#file');
 const currentFileElement = document.querySelector('#current');
+const currentEditElement = document.querySelector('#current-edit');
 const fileArrow = document.querySelector('#file .uparrow');
 const fileDropdown = document.querySelector('#fileDropdown');
 const saveContainer = document.querySelector('#save');
@@ -260,6 +363,9 @@ function getAllScripts() {
 }
 
 function getModelForScript(filename) {
+  if (!monaco) {
+    throw new Error('Monaco is not initialized yet.');
+  }
   const uri = monaco.Uri.parse(`inmemory://model/${filename}.ts`);
   const model = monaco.editor.getModel(uri) ||
       monaco.editor.createModel('', 'typescript', uri);
@@ -281,17 +387,28 @@ window.beforeunload = saveCurrent;
 
 let switching = false;
 let isExample = true;
+function syncCurrentEditVisibility(scriptName) {
+  if (!currentEditElement) return;
+  // Show current edit icon only for user scripts.
+  currentEditElement.style.display =
+      exampleFunctions.get(scriptName) == null ? 'inline-block' : 'none';
+}
+
+let resetCamera = true;
+
 function switchTo(scriptName) {
   if (editor) {
     switching = true;
     currentFileElement.textContent = scriptName;
     setScript('currentName', scriptName);
     isExample = exampleFunctions.get(scriptName) != null;
+    syncCurrentEditVisibility(scriptName);
     const code = isExample ? exampleFunctions.get(scriptName) :
                              getScript(scriptName) ?? '';
     window.location.hash = '#' + scriptName;
     const model = getModelForScript(scriptName);
     editor.setModel(model);
+    resetCamera = true;
 
     // Either editor.setValue() or model.setValue() will trigger
     // onDidChangeModelContent.  This will cause some UI updates, but will also
@@ -340,47 +457,6 @@ function uniqueName(name) {
 
 function addEdit(button) {
   const label = button.firstChild;
-  const edit = addIcon(button);
-  edit.classList.add('edit');
-
-  edit.onclick = function(event) {
-    event.stopPropagation();
-    const oldName = label.textContent;
-    const code = getScript(oldName);
-    const form = document.createElement('form');
-    const inputElement = document.createElement('input');
-    inputElement.classList.add('name');
-    inputElement.value = oldName;
-    label.textContent = '';
-    button.appendChild(form);
-    form.appendChild(inputElement);
-    inputElement.focus();
-    inputElement.setSelectionRange(0, oldName.length);
-
-    function rename() {
-      const input = inputElement.value;
-      inputElement.blur();
-      if (!input) return;
-      const newName = uniqueName(input);
-      label.textContent = newName;
-      if (currentFileElement.textContent == oldName) {
-        currentFileElement.textContent = newName;
-      }
-      removeScript(oldName);
-      setScript(newName, code);
-    }
-
-    form.onsubmit = rename;
-    inputElement.onclick = function(event) {
-      event.stopPropagation();
-    };
-
-    inputElement.onblur = function() {
-      button.removeChild(form);
-      label.textContent = oldName;
-    };
-  };
-
   const trash = addIcon(button);
   trash.classList.add('trash');
   let lastClick = 0;
@@ -403,6 +479,68 @@ function addEdit(button) {
       const container = button.parentElement;
       container.parentElement.removeChild(container);
     }
+  };
+}
+
+function startRenameCurrentScript() {
+  const oldName = currentFileElement.textContent;
+  if (exampleFunctions.get(oldName) != null) return;
+
+  hideDropdown();
+  const code = getScript(oldName) ?? '';
+  currentEditElement.style.display = 'none';
+  // Rename in the same place (no extra input box).
+  currentFileElement.contentEditable = 'true';
+  currentFileElement.classList.add('renaming');
+  currentFileElement.spellcheck = false;
+  currentFileElement.focus();
+  const selection = window.getSelection();
+  const range = document.createRange();
+  range.selectNodeContents(currentFileElement);
+  selection.removeAllRanges();
+  selection.addRange(range);
+
+  function finishRename(revert = false) {
+    const input = currentFileElement.textContent.trim();
+    const shouldRename = !revert && input && input !== oldName;
+    const newName = shouldRename ? uniqueName(input) : oldName;
+    currentFileElement.contentEditable = 'false';
+    currentFileElement.classList.remove('renaming');
+    currentFileElement.textContent = newName;
+    if (shouldRename) {
+      // Keep storage key and dropdown label in sync with new name.
+      setScript('currentName', newName);
+      removeScript(oldName);
+      setScript(newName, code);
+      for (const item of fileDropdown.children) {
+        const span = item.querySelector('button span');
+        if (span && span.textContent === oldName) {
+          span.textContent = newName;
+          break;
+        }
+      }
+    }
+    syncCurrentEditVisibility(currentFileElement.textContent);
+  }
+
+  currentFileElement.onkeydown = event => {
+    // Enter = save, Escape = cancel.
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      finishRename();
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      finishRename(true);
+    }
+  };
+  currentFileElement.onblur = () => finishRename();
+}
+
+if (currentEditElement) {
+  currentEditElement.onclick = event => {
+    event.preventDefault();
+    event.stopPropagation();
+    startRenameCurrentScript();
   };
 }
 
@@ -436,6 +574,11 @@ function initializeRun() {
 // Editor ------------------------------------------------------------
 
 async function createEditor() {
+  const monacoModules = await loadMonacoModules();
+  monaco = monacoModules.monaco;
+  const {editorWorker, tsWorker} = monacoModules;
+  await ensureMonacoSuggestLoaded();
+  await ensureMonacoNavigationLoaded();
   self.MonacoEnvironment = {
     getWorker: (_, label) => {
       if (label === 'typescript' || label === 'javascript') {
@@ -448,8 +591,12 @@ async function createEditor() {
 
   editor = monaco.editor.create(document.getElementById('editor'), {
     language: 'typescript',
+    theme: 'vs',
     automaticLayout: true,
     minimap: {enabled: false},
+    quickSuggestions: true,
+    suggestOnTriggerCharacters: true,
+    parameterHints: {enabled: true},
 
 
     // make monaco editor to wrap the content,and hide horizontal
@@ -461,6 +608,7 @@ async function createEditor() {
     // remove horizontal scrollbar:
     scrollbar: {
       horizontal: 'hidden',
+      verticalScrollbarSize: 8,
     },
     // make monaco editor to wrap the content,and hide horizontal
     // scrollbar----end-------.
@@ -469,8 +617,7 @@ async function createEditor() {
   });
 
   monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
-    module: monaco.languages.typescript.ScriptTarget.ESNext,
-    moduleResolution: monaco.languages.typescript.ScriptTarget.NodeNext,
+    target: monaco.languages.typescript.ScriptTarget.ESNext,
     allowNonTsExtensions: true,
   });
 
@@ -499,70 +646,53 @@ async function createEditor() {
   // Initialize auto typing on monaco editor.
   const typeIndicator = document.querySelector('#type-indicator');
   let typeIndicatorFrame = 0;
-  let autoTypings = undefined;
 
-  const syncTypeIndicator = () => {
+  updateTypeIndicator = () => {
     if (!typeIndicator || !autoTypings) return;
     typeIndicator.textContent =
         autoTypings.isResolving ? 'Fetching types...' : '';
-    typeIndicatorFrame =
-        autoTypings.isResolving ? requestAnimationFrame(syncTypeIndicator) : 0;
+    typeIndicatorFrame = autoTypings.isResolving ?
+        requestAnimationFrame(updateTypeIndicator) :
+        0;
   };
 
   const showTypeIndicator = () => {
     if (!typeIndicator) return;
     typeIndicator.textContent = 'Fetching types...';
     if (autoTypings && typeIndicatorFrame === 0) {
-      typeIndicatorFrame = requestAnimationFrame(syncTypeIndicator);
+      typeIndicatorFrame = requestAnimationFrame(updateTypeIndicator);
     }
   };
 
-  self.window.typecache = new LocalStorageCache();
-
-  // We inject manifold-3d typings locally above, and text-shaper publishes
-  // broken declaration re-exports to non-existent source files. Avoid CDN
-  // probes for those packages to keep refreshes quiet.
-  // This skip list only affects Monaco auto-typing CDN lookups, not runtime
-  // imports.
-  const jsDelivrResolver = new JsDelivrSourceResolver();
-  const skippedTypingPackages =
-      new Set(['manifold-3d', 'text-shaper', '@types/require']);
-  const shouldSkipTypingPackage = packageName => {
-    return skippedTypingPackages.has(packageName);
-  };
-  const sourceResolver = {
-    resolvePackageJson: async (packageName, version, subPath) => {
-      if (shouldSkipTypingPackage(packageName)) return '';
-      return jsDelivrResolver.resolvePackageJson(packageName, version, subPath);
-    },
-    resolveSourceFile: async (packageName, version, path) => {
-      if (shouldSkipTypingPackage(packageName)) return '';
-      return jsDelivrResolver.resolveSourceFile(packageName, version, path);
+  const ensureAutoTypings = () => {
+    if (!autoTypingsPromise) {
+      autoTypingsPromise =
+          initializeAutoTypings(showTypeIndicator).catch(error => {
+            autoTypingsPromise = null;
+            console.error('Failed to initialize auto typings:', error);
+          });
     }
+    return autoTypingsPromise;
   };
 
-  autoTypings = await AutoTypings.create(editor, {
-    sourceResolver,
-    sourceCache: self.window.typecache,
-    // Conservative limits: resolve shallow imports while avoiding deep fetch
-    // fan-out that adds noise and slows editor/offline workflows.
-    packageRecursionDepth: 1,
-    fileRecursionDepth: 2,
-    onUpdate: update => {
-      if (update.type === 'ResolveNewImports') {
-        showTypeIndicator();
-      }
-    },
-    onError: e => {
-      if (String(e?.message ?? e).includes('Not implemented yet')) {
-        return;
-      }
-      console.error(e);
-    }
-  });
-  if (typeIndicator?.textContent) {
-    syncTypeIndicator();
-  }
+  let enhancementsStarted = false;
+  const startEnhancements = () => {
+    if (enhancementsStarted) return;
+    enhancementsStarted = true;
+    // Start downloads in background; don't block editor interactivity.
+    ensureEsbuildWasmPreloaded().catch(error => {
+      console.warn('Failed to preload esbuild.wasm:', error);
+    });
+    ensureMonacoContributionsLoaded().catch(error => {
+      console.error('Failed to load Monaco contributions:', error);
+    });
+    ensureAutoTypings();
+  };
+  // Start fetching enhancements ASAP (non-blocking), and also on first
+  // interaction so suggestions are ready when the user begins typing.
+  setTimeout(startEnhancements, 0);
+  editor.onDidFocusEditorText(() => startEnhancements());
+  editor.onDidType(() => startEnhancements());
   for (const [name] of exampleFunctions) {
     const button = createDropdownItem(name);
     fileDropdown.appendChild(button.parentElement);
@@ -618,7 +748,7 @@ async function createEditor() {
     }
 
     // monaco-editor-auto-typings loaded types.  Do nothing.
-    if (autoTypings.isResolving && e.changes.isFlush) {
+    if (autoTypings?.isResolving && e.changes.isFlush) {
       return;
     }
 
@@ -643,12 +773,84 @@ async function createEditor() {
 
 createEditor();
 
-// Animation ------------------------------------------------------------
+async function initializeAutoTypings(showTypeIndicator) {
+  const {AutoTypings, JsDelivrSourceResolver, LocalStorageCache} =
+      await import('monaco-editor-auto-typings');
+  self.window.typecache = new LocalStorageCache();
+
+  // We inject manifold-3d typings locally above, and text-shaper publishes
+  // broken declaration re-exports to non-existent source files. Avoid CDN
+  // probes for those packages to keep refreshes quiet.
+  // This skip list only affects Monaco auto-typing CDN lookups, not runtime
+  // imports.
+  const jsDelivrResolver = new JsDelivrSourceResolver();
+  const skippedTypingPackages =
+      new Set(['manifold-3d', 'text-shaper', '@types/require']);
+  const shouldSkipTypingPackage = packageName => {
+    return skippedTypingPackages.has(packageName);
+  };
+  const sourceResolver = {
+    resolvePackageJson: async (packageName, version, subPath) => {
+      if (shouldSkipTypingPackage(packageName)) return '';
+      return jsDelivrResolver.resolvePackageJson(packageName, version, subPath);
+    },
+    resolveSourceFile: async (packageName, version, path) => {
+      if (shouldSkipTypingPackage(packageName)) return '';
+      return jsDelivrResolver.resolveSourceFile(packageName, version, path);
+    }
+  };
+
+  autoTypings = await AutoTypings.create(editor, {
+    sourceResolver,
+    sourceCache: self.window.typecache,
+    // Conservative limits: resolve shallow imports while avoiding deep fetch
+    // fan-out that adds noise and slows editor/offline workflows.
+    packageRecursionDepth: 1,
+    fileRecursionDepth: 2,
+    onUpdate: update => {
+      if (update.type === 'ResolveNewImports') {
+        showTypeIndicator();
+      }
+    },
+    onError: e => {
+      if (String(e?.message ?? e).includes('Not implemented yet')) {
+        return;
+      }
+      console.error(e);
+    }
+  });
+  updateTypeIndicator();
+}
+
+// Viewer additions -----------------------------------------------------
 const mv = document.querySelector('model-viewer');
+const scene =
+    mv[Object.getOwnPropertySymbols(mv).find(x => x.description === 'scene')];
+
 const animationContainer = document.querySelector('#animation');
-const playButton = document.querySelector('#play');
-const scrubber = document.querySelector('#scrubber');
-let paused = false;
+let showEdges = false;
+
+const camera = {
+  orbit: null,
+  target: null,
+  fov: 0,
+};
+
+mv.addEventListener('before-render', async () => {
+  if (resetCamera) {
+    mv.fieldOfView = 'auto';
+    await mv.updateComplete;
+    mv.cameraOrbit = 'auto auto auto';
+    mv.maxCameraOrbit = 'auto 180deg auto';
+    mv.cameraTarget = 'auto auto auto';
+    resetCamera = false;
+  } else {
+    scene.setTarget(camera.target.x, camera.target.y, camera.target.z);
+    mv.cameraOrbit = camera.orbit.toString();
+    mv.fieldOfView = camera.fov.toString() + 'deg';
+  }
+  mv.jumpCameraToGoal();
+});
 
 mv.addEventListener('load', () => {
   const hasAnimation = mv.availableAnimations.length > 0;
@@ -656,7 +858,17 @@ mv.addEventListener('load', () => {
   if (hasAnimation) {
     play();
   }
+  updateOrientationGrid();
+  syncEdgeToggleButton();
+  if (showEdges) {
+    setEdgesVisible(true);
+  }
 });
+
+// Animation ------------------------------------------------------------
+const playButton = document.querySelector('#play');
+const scrubber = document.querySelector('#scrubber');
+let paused = false;
 
 function play() {
   mv.play();
@@ -687,6 +899,304 @@ playButton.onclick = function() {
 scrubber.oninput = function() {
   mv.currentTime = scrubber.value;
 };
+
+// Wireframe ------------------------------------------------------------
+const edgeToggle = document.getElementById('edgesToggle');
+const EDGE_KEY = 'edgeLines';
+const EDGE_OVERLAY_FLAG = '__isEdgeOverlay';
+
+edgeToggle.addEventListener('click', () => {
+  showEdges = !showEdges;
+  syncEdgeToggleButton();
+  setEdgesVisible(showEdges);
+});
+
+function syncEdgeToggleButton() {
+  if (showEdges) {
+    edgeToggle.classList.add('green');
+  } else {
+    edgeToggle.classList.remove('green');
+  }
+}
+
+function setEdgesVisible(visible) {
+  const root = scene.model ?? scene;
+  root.traverse((obj) => {
+    if (obj.userData?.[ORIENTATION_GRID_FLAG]) return;
+    if (obj.userData?.[EDGE_OVERLAY_FLAG]) return;
+
+    if (obj.isMesh) {
+      // Fix wireframe z-fighting.
+      obj.material.polygonOffset = visible;
+      obj.material.polygonOffsetFactor = 4;
+      obj.material.polygonOffsetUnits = 4;
+
+      if (visible && !obj.userData[EDGE_KEY]) {
+        const material = new MeshBasicMaterial({
+          color: 0x111111,
+          wireframe: true,
+          toneMapped: false,
+        });
+
+        let edgeLines;
+        if (obj.isSkinnedMesh) {
+          edgeLines = new SkinnedMesh(obj.geometry, material);
+          edgeLines.bind(obj.skeleton, obj.bindMatrix);
+          edgeLines.bindMatrix.copy(obj.bindMatrix);
+          edgeLines.bindMatrixInverse.copy(obj.bindMatrixInverse);
+        } else {
+          edgeLines = new Mesh(obj.geometry, material);
+          edgeLines.morphTargetInfluences = obj.morphTargetInfluences;
+          edgeLines.morphTargetDictionary = obj.morphTargetDictionary;
+        }
+
+        edgeLines.userData[EDGE_OVERLAY_FLAG] = true;
+        obj.add(edgeLines);
+        obj.userData[EDGE_KEY] = edgeLines;
+      }
+
+      const edgeLines = obj.userData[EDGE_KEY];
+      if (edgeLines) {
+        edgeLines.visible = visible;
+      }
+    }
+  });
+
+  scene.queueRender?.();
+}
+
+// Orientation Grid --------------------------------------------------
+const ORIENTATION_GRID_FLAG = '__isOrientationGrid';
+const ORIENTATION_GRID_KEY = '__orientationGrid';
+
+function ceilNiceNumber(value) {
+  const positiveValue = Math.max(value, 1e-9);
+  const exponent = Math.ceil(Math.log10(positiveValue));
+  return 10 ** exponent;
+}
+
+function formatMetricLength(meters) {
+  const trim = x => x.toFixed(0);
+  const absMeters = Math.abs(meters);
+  if (absMeters >= 10) {
+    return `${trim(meters)} m`;
+  }
+  if (absMeters >= 0.1) {
+    return `${trim(meters * 100)} cm`;
+  }
+  if (absMeters >= 0.01) {
+    return `${trim(meters * 1000)} mm`;
+  }
+  return `${trim(meters * 1e6)} µm`;
+}
+
+function createAxisLabelMesh(text, size) {
+  const canvas = document.createElement('canvas');
+  const canvasSize = 128;
+  canvas.width = 2 * canvasSize;
+  canvas.height = canvasSize;
+  const context = canvas.getContext('2d');
+  if (!context) return null;
+
+  context.clearRect(0, 0, 2 * canvasSize, canvasSize);
+  context.fillStyle = 'rgba(0,0,0,0.8)';
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+
+  const lines = String(text).split('\n').filter(Boolean);
+  context.font = '700 52px "Arial", sans-serif';
+
+  const lineHeight = 60;
+  const startY = (canvasSize / 2) - ((lines.length - 1) * lineHeight / 2);
+  lines.forEach((line, index) => {
+    context.fillText(line, canvasSize, startY + (index * lineHeight));
+  });
+
+  const texture = new CanvasTexture(canvas);
+  texture.needsUpdate = true;
+  const material = new MeshBasicMaterial({
+    map: texture,
+    transparent: true,
+    side: 2,
+    toneMapped: false,
+    depthWrite: false,
+  });
+  const mesh = new Mesh(new PlaneGeometry(2 * size, size), material);
+  mesh.userData[ORIENTATION_GRID_FLAG] = true;
+  mesh.rotation.x = -Math.PI / 2;
+  return mesh;
+}
+
+function createGridLinesGeometry(gridHalfExtent, numLines, spacing) {
+  const vertices = [];
+  const epsilon = spacing * 0.001;
+  for (let i = 1; i <= numLines; i++) {
+    const coordinate = i * spacing;
+    vertices.push(
+        -gridHalfExtent, 0, coordinate, gridHalfExtent, 0, coordinate);
+    vertices.push(
+        coordinate, 0, -gridHalfExtent, coordinate, 0, gridHalfExtent);
+    vertices.push(
+        -gridHalfExtent, 0, -coordinate, gridHalfExtent, 0, -coordinate);
+    vertices.push(
+        -coordinate, 0, -gridHalfExtent, -coordinate, 0, gridHalfExtent);
+  }
+  if (vertices.length === 0) return null;
+  const geometry = new BufferGeometry();
+  geometry.setAttribute('position', new Float32BufferAttribute(vertices, 3));
+  return geometry;
+}
+
+function disposeOrientationGrid(grid) {
+  if (!grid) return;
+
+  grid.traverse(obj => {
+    if (obj.geometry) {
+      obj.geometry.dispose();
+    }
+
+    const material = obj.material;
+    if (!material) return;
+
+    const materials = Array.isArray(material) ? material : [material];
+    for (const currentMaterial of materials) {
+      const map = currentMaterial.map;
+      if (map) {
+        map.dispose();
+      }
+      currentMaterial.dispose();
+    }
+  });
+}
+
+function updateOrientationGrid() {
+  const root = scene.model ?? scene;
+  const previousGrid = root.userData[ORIENTATION_GRID_KEY];
+  if (previousGrid) {
+    disposeOrientationGrid(previousGrid);
+    previousGrid.removeFromParent();
+    delete root.userData[ORIENTATION_GRID_KEY];
+  }
+
+  const center = mv.getBoundingBoxCenter();
+  const extent = mv.getDimensions();
+  const maxDim = Math.max(extent.x, extent.y, extent.z);
+
+  if (center.y - extent.y / 2 > 0) {
+    mv.setAttribute('shadow-intensity', '0');
+  } else {
+    mv.setAttribute('shadow-intensity', '1');
+  }
+
+  const extentX = Math.max(
+      Math.abs(center.x + extent.x / 2), Math.abs(center.x - extent.x / 2));
+  const extentZ = Math.max(
+      Math.abs(center.z + extent.z / 2), Math.abs(center.z - extent.z / 2));
+  const modelHalfExtent = Math.max(extentX, extentZ);
+  const paddedHalfExtent = modelHalfExtent * 1.2;
+  const minorStep = ceilNiceNumber(paddedHalfExtent / 50);
+  const numMinor = Math.ceil(paddedHalfExtent / minorStep);
+  const gridHalfExtent = numMinor * minorStep;
+  const maxGridDimension = gridHalfExtent * 2;
+
+  const minorGeometry =
+      createGridLinesGeometry(gridHalfExtent, numMinor, minorStep);
+  const majorGeometry =
+      createGridLinesGeometry(gridHalfExtent, numMinor / 10, 10 * minorStep);
+
+  const grid = new Group();
+  grid.userData[ORIENTATION_GRID_FLAG] = true;
+  grid.renderOrder = 2;
+  // Avoid shadow clash with animation
+  grid.position.y = -0.0005 * maxDim;
+
+  const gridPlane = new Mesh(
+      new PlaneGeometry(maxGridDimension, maxGridDimension),
+      new MeshBasicMaterial({
+        color: 0,
+        transparent: true,
+        opacity: 0.1,
+        side: 2,
+        depthWrite: false,
+        toneMapped: false,
+      }));
+  gridPlane.rotation.x = -Math.PI / 2;
+  gridPlane.userData[ORIENTATION_GRID_FLAG] = true;
+  gridPlane.userData.noHit = true;  // using <model-viewer>'s internals
+  grid.add(gridPlane);
+
+  if (minorGeometry) {
+    const minorLines = new LineSegments(minorGeometry, new LineBasicMaterial({
+                                          color: 0,
+                                          transparent: true,
+                                          opacity: 0.4,
+                                          depthWrite: false,
+                                          toneMapped: false,
+                                        }));
+    minorLines.userData[ORIENTATION_GRID_FLAG] = true;
+    minorLines.userData.noHit = true;  // using <model-viewer>'s internals
+    grid.add(minorLines);
+  }
+
+  if (majorGeometry) {
+    const majorLines = new LineSegments(majorGeometry, new LineBasicMaterial({
+                                          color: 0,
+                                          transparent: true,
+                                          opacity: 0.8,
+                                          depthWrite: false,
+                                          toneMapped: false,
+                                        }));
+    majorLines.userData[ORIENTATION_GRID_FLAG] = true;
+    majorLines.userData.noHit = true;  // using <model-viewer>'s internals
+    grid.add(majorLines);
+  }
+
+  const axisStripWidth = maxGridDimension * 0.005;
+  const axisMaterial = new MeshBasicMaterial({
+    color: 0,
+    transparent: true,
+    opacity: 0.85,
+    side: 2,
+    depthWrite: false,
+    toneMapped: false,
+  });
+
+  const xAxis = new Mesh(
+      new PlaneGeometry(maxGridDimension, axisStripWidth),
+      axisMaterial.clone());
+  xAxis.rotation.x = -Math.PI / 2;
+  xAxis.userData[ORIENTATION_GRID_FLAG] = true;
+  xAxis.userData.noHit = true;  // using <model-viewer>'s internals
+  grid.add(xAxis);
+
+  const yAxis = new Mesh(
+      new PlaneGeometry(axisStripWidth, maxGridDimension),
+      axisMaterial.clone());
+  yAxis.rotation.x = -Math.PI / 2;
+  yAxis.userData[ORIENTATION_GRID_FLAG] = true;
+  yAxis.userData.noHit = true;  // using <model-viewer>'s internals
+  grid.add(yAxis);
+
+  const labelHeight = maxGridDimension * 0.07;
+  const axisDimensionLabel = formatMetricLength(gridHalfExtent);
+
+  const xLabel = createAxisLabelMesh(`+X\n${axisDimensionLabel}`, labelHeight);
+  if (xLabel) {
+    xLabel.position.set(gridHalfExtent + labelHeight, 0, 0);
+    grid.add(xLabel);
+  }
+
+  const yLabel = createAxisLabelMesh(`+Y\n${axisDimensionLabel}`, labelHeight);
+  if (yLabel) {
+    yLabel.position.set(0, 0, -(gridHalfExtent + labelHeight / 2));
+    grid.add(yLabel);
+  }
+
+  root.add(grid);
+  root.userData[ORIENTATION_GRID_KEY] = grid;
+
+  scene.queueRender?.();
+}
 
 // Execution ------------------------------------------------------------
 const consoleElement = document.querySelector('#console');
@@ -731,7 +1241,7 @@ function createWorker() {
     const message = e.data;
 
     if (message?.type === 'ready') {
-      if (tsWorker != null && !manifoldInitialized) {
+      if (editor != null && !manifoldInitialized) {
         initializeRun();
       }
       manifoldInitialized = true;
@@ -782,6 +1292,11 @@ function createWorker() {
       if (message.extension === 'glb') {
         if (output.glbURL) URL.revokeObjectURL(output.glbURL);
         output.glbURL = message.blobURL;
+        // Record view to maintain on reload
+        camera.orbit = mv.getCameraOrbit();
+        camera.target = mv.getCameraTarget();
+        camera.fov = mv.getFieldOfView();
+        mv.fieldOfView = 'auto';
 
         mv.src = output.glbURL;
       } else if (message?.extension === '3mf') {
