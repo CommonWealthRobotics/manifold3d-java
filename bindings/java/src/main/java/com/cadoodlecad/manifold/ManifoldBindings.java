@@ -404,7 +404,8 @@ public class ManifoldBindings {
 		load("manifold_manifold_vec_length", ValueLayout.JAVA_LONG, ValueLayout.ADDRESS);
 		// ManifoldManifold* manifold_manifold_vec_get(void* mem, ManifoldManifoldVec*
 		// ms, size_t idx);
-		load("manifold_manifold_vec_get", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG);
+		load("manifold_manifold_vec_get", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+				ValueLayout.JAVA_LONG);
 
 		// ===== Mesh export (64-bit only) =====
 
@@ -1032,6 +1033,59 @@ public class ManifoldBindings {
 			MemorySegment mem = (MemorySegment) functions.get("manifold_alloc_manifold").invoke();
 			return (MemorySegment) functions.get("manifold_compose").invoke(mem, vec);
 		} finally {
+			if (vec != null) {
+				try {
+					functions.get("manifold_delete_manifold_vec").invoke(vec);
+				} catch (Throwable ignored) {
+				}
+			}
+		}
+	}
+
+	/**
+	 * Splits a manifold into its connected components.
+	 *
+	 * Each returned segment owns its native memory independently and must be
+	 * freed with {@link #delete(MemorySegment)}. The elements are copies
+	 * placed on the heap exactly like every other manifold handle this class
+	 * hands out, so they stay valid after this call returns; the input
+	 * {@code m} is untouched and remains owned by the caller.
+	 *
+	 * @param m the manifold to decompose; must not be null
+	 * @return one segment per connected component; empty when {@code m} is an
+	 *         empty manifold
+	 */
+	public MemorySegment[] decompose(MemorySegment m) throws Throwable {
+		if (m == null)
+			throw new IllegalArgumentException("manifold segment must not be null");
+		MemorySegment vec = null;
+		try {
+			MemorySegment vecMem = (MemorySegment) functions.get("manifold_alloc_manifold_vec_java").invoke();
+			vec = (MemorySegment) functions.get("manifold_decompose").invoke(vecMem, m);
+			long count = (long) functions.get("manifold_manifold_vec_length").invoke(vec);
+			MemorySegment[] parts = new MemorySegment[(int) count];
+			try {
+				MethodHandle vecGet = functions.get("manifold_manifold_vec_get");
+				MethodHandle allocManifold = functions.get("manifold_alloc_manifold");
+				if (vecGet == null || allocManifold == null)
+					throw new IllegalStateException(
+							"manifold_manifold_vec_get / manifold_alloc_manifold were not loaded");
+				for (int i = 0; i < count; i++) {
+					// heap-backed storage so each part outlives the vector it came from
+					MemorySegment elemMem = (MemorySegment) allocManifold.invoke();
+					parts[i] = elemMem;
+					parts[i] = (MemorySegment) vecGet.invoke(elemMem, vec, (long) i);
+				}
+				return parts;
+			} catch (Throwable t) {
+				for (MemorySegment part : parts)
+					if (part != null)
+						safeDelete(part);
+				throw t;
+			}
+		} finally {
+			// the vector is a std::vector<Manifold>, so it needs the vec deleter —
+			// manifold_delete_manifold would run the wrong destructor and crash
 			if (vec != null) {
 				try {
 					functions.get("manifold_delete_manifold_vec").invoke(vec);
