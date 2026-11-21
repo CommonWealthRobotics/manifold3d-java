@@ -841,3 +841,16 @@ TEST(CBIND, execution_context_cancel) {
   free(cube1);
   manifold_delete_execution_context(ctx);
 }
+
+TEST(CBIND, simplify_preserving_planes) {
+  ManifoldManifold* cube = manifold_cube(manifold_alloc_manifold(), 2, 3, 4, 1);
+  ManifoldManifold* dense = manifold_refine(manifold_alloc_manifold(), cube, 3);
+  ManifoldManifold* simplified = manifold_simplify_preserving_planes(
+      manifold_alloc_manifold(), dense, .05);
+  EXPECT_EQ(manifold_status(simplified), MANIFOLD_NO_ERROR);
+  EXPECT_LT(manifold_num_tri(simplified), manifold_num_tri(dense));
+  EXPECT_DOUBLE_EQ(manifold_volume(simplified), manifold_volume(cube));
+  manifold_delete_manifold(simplified);
+  manifold_delete_manifold(dense);
+  manifold_delete_manifold(cube);
+}

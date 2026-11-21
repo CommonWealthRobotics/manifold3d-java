@@ -89,6 +89,34 @@ struct Manifold::Impl {
   MeshRelationD meshRelation_;
   Collider collider_;
 
+  struct SourcePlane {
+    vec3 origin;
+    vec3 normal;
+    double tolerance;
+  };
+  std::map<int, int> sourceFaceIDs_;
+  std::vector<SourcePlane> sourcePlanes_;
+  std::vector<std::vector<int>> vertexSourcePlanes_;
+  void BeginPlanePreservation(double collapseTolerance, double planeTolerance);
+  void EndPlanePreservation() {
+    for (auto& ref : meshRelation_.triRef) {
+      auto it = sourceFaceIDs_.find(ref.faceID);
+      if (it != sourceFaceIDs_.end()) ref.faceID = it->second;
+    }
+    sourceFaceIDs_.clear();
+    sourcePlanes_.clear();
+    vertexSourcePlanes_.clear();
+  }
+  double SimplifyPrecision() const {
+    return sourcePlanes_.empty() ? epsilon_ : sourcePlanes_[0].tolerance;
+  }
+  bool PlaneSafeCollapse(int from, int to) const;
+  bool GeometricallyLegalChanges(
+      const std::vector<std::pair<int, ivec3>>& changes);
+  void UpdateSimplificationBounds(int face);
+  bool PlaneSafeSwap(int edge, bool commit = false);
+  void InheritSourcePlanes(int from, int to);
+
   static std::atomic<uint32_t> meshIDCounter_;
   static uint32_t ReserveIDs(uint32_t);
 

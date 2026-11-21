@@ -351,6 +351,13 @@ ManifoldManifold* manifold_simplify(void* mem, ManifoldManifold* m,
   return to_c(new (mem) Manifold(simplified));
 }
 
+ManifoldManifold* manifold_simplify_preserving_planes(void* mem,
+                                                      ManifoldManifold* m,
+                                                      double tolerance) {
+  auto simplified = from_c(m)->SimplifyPreservingPlanes(tolerance);
+  return to_c(new (mem) Manifold(simplified));
+}
+
 ManifoldManifold* manifold_empty(void* mem) {
   return to_c(new (mem) Manifold());
 }

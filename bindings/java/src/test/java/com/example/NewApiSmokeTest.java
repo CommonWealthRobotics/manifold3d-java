@@ -188,4 +188,21 @@ class NewApiSmokeTest {
 				assertTrue(idx >= 0 && idx < 4, "indices reference the 4 input points");
 		}
 	}
+
+	@Test
+	void planePreservingSimplificationUsesTheBuiltNativeApi() throws Throwable {
+		MemorySegment cube = mb.cube(2, 3, 4, true);
+		MemorySegment dense = MemorySegment.NULL;
+		MemorySegment simplified = MemorySegment.NULL;
+		try {
+			dense = mb.refine(cube, 3);
+			simplified = mb.simplifyPreservingPlanes(dense, .05);
+			assertTrue(mb.numTri(simplified) < mb.numTri(dense));
+			assertEquals(mb.volume(cube), mb.volume(simplified), 1e-10);
+		} finally {
+			if (!simplified.equals(MemorySegment.NULL)) mb.safeDelete(simplified);
+			if (!dense.equals(MemorySegment.NULL)) mb.safeDelete(dense);
+			mb.safeDelete(cube);
+		}
+	}
 }

@@ -177,6 +177,10 @@ ManifoldManifold* manifold_set_tolerance(void* mem, ManifoldManifold* m,
                                          double tolerance);
 ManifoldManifold* manifold_simplify(void* mem, ManifoldManifold* m,
                                     double tolerance);
+// Opt-in simplification retaining resolved source planes and outlines.
+ManifoldManifold* manifold_simplify_preserving_planes(void* mem,
+                                                      ManifoldManifold* m,
+                                                      double tolerance);
 
 // Manifold Shapes / Constructors
 

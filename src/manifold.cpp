@@ -413,6 +413,30 @@ Manifold Manifold::Simplify(double tolerance) const {
   return Manifold(impl);
 }
 
+/** Simplify without bending resolved source planar regions. */
+Manifold Manifold::SimplifyPreservingPlanes(double tolerance) const {
+  auto leafImpl = GetCsgLeafNode().GetImpl();
+  if (leafImpl->status_ != Error::NoError)
+    return PropagateStatus(leafImpl->status_);
+  auto impl = std::make_shared<Impl>(*leafImpl);
+  const double oldTolerance = impl->tolerance_;
+  if (tolerance == 0) tolerance = oldTolerance;
+  if (tolerance > oldTolerance) {
+    // Simplify restores tolerance, but its cached coplanar groups still use
+    // the prior approximation distance. Rebuild from actual coordinates at
+    // source precision before taking constraints for every subsequent pass.
+    impl->SetNormalsAndCoplanar();
+    impl->BeginPlanePreservation(tolerance, oldTolerance);
+    impl->tolerance_ = tolerance;
+    impl->SetNormalsAndCoplanar();
+  }
+  impl->SimplifyTopology();
+  impl->EndPlanePreservation();
+  impl->SortGeometry();
+  impl->tolerance_ = oldTolerance;
+  return Manifold(impl);
+}
+
 /**
  * The genus is a topological property of the manifold, representing the number
  * of "handles". A sphere is 0, torus 1, etc. It is only meaningful for a single
