@@ -213,6 +213,15 @@ class Manifold {
   Manifold WarpBatch(std::function<void(VecView<vec3>)>) const;
   Manifold SetTolerance(double) const;
   Manifold Simplify(double tolerance = 0) const;
+  /**
+   * Opt-in simplification retaining resolved source planes and their outlines.
+   * A patch is resolved when its area / perimeter exceeds the cleanup distance.
+   * Its vertices may collapse onto another vertex only within the original
+   * plane tolerance; nearby edge/face crossings are rejected before mutation.
+   * The approximation distance does not widen these plane constraints. Smaller
+   * features may still be simplified. The ordinary Simplify() is unchanged.
+   */
+  Manifold SimplifyPreservingPlanes(double tolerance = 0) const;
   ///@}
 
   /** @name Boolean

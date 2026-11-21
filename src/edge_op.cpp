@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <set>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -116,6 +117,223 @@ void Manifold::Impl::CleanupTopology() {
   DedupeEdges();
 }
 
+// Preserve resolved source planes while retaining directional, tolerance-based
+// cleanup: an unconstrained bevel vertex may move onto a planar patch, but a
+// vertex of that patch may not move off its original plane. Native mesh IDs are
+// not used as locks, so short joints can still be removed.
+void Manifold::Impl::BeginPlanePreservation(double collapseTolerance,
+                                            double planeTolerance) {
+  EndPlanePreservation();
+  struct Patch {
+    double area = 0, perimeter = 0, largest = 0;
+    int triangle = -1;
+    std::vector<int> vertices;
+  };
+  using Key = std::tuple<int, int, int>;
+  std::map<Key, Patch> patches;
+  auto key = [&](int tri) {
+    const TriRef& r = meshRelation_.triRef[tri];
+    return Key(r.meshID, r.coplanarID, r.faceID);
+  };
+  for (int t = 0; t < NumTri(); ++t) {
+    if (halfedge_.Start(3 * t) < 0) continue;
+    const int a = halfedge_.Start(3 * t), b = halfedge_.Start(3 * t + 1),
+              c = halfedge_.Start(3 * t + 2);
+    const double area = la::length(la::cross(vertPos_[b] - vertPos_[a],
+                                             vertPos_[c] - vertPos_[a])) /
+                        2;
+    auto& patch = patches[key(t)];
+    patch.area += area;
+    if (area > patch.largest) {
+      patch.largest = area;
+      patch.triangle = t;
+    }
+    for (int e = 3 * t; e < 3 * t + 3; ++e) {
+      patch.vertices.push_back(halfedge_.Start(e));
+      const int pair = halfedge_.Pair(e);
+      if (pair < 0 || key(pair / 3) != key(t))
+        patch.perimeter += la::length(vertPos_[halfedge_.End(e)] -
+                                      vertPos_[halfedge_.Start(e)]);
+    }
+  }
+  int nextFaceID = 0;
+  for (const auto& ref : meshRelation_.triRef)
+    nextFaceID = std::max(nextFaceID, ref.faceID + 1);
+  std::map<Key, int> protectedFaces;
+  vertexSourcePlanes_.resize(NumVert());
+  for (auto& entry : patches) {
+    auto& patch = entry.second;
+    // A/P is a length scale. Preserve faces resolved beyond the requested
+    // cleanup distance, without freezing the micro-relief that distance
+    // removes.
+    if (patch.triangle < 0 || patch.area <= collapseTolerance * patch.perimeter)
+      continue;
+    const int newFaceID = nextFaceID++;
+    protectedFaces[entry.first] = newFaceID;
+    sourceFaceIDs_[newFaceID] = std::get<2>(entry.first);
+    const int id = sourcePlanes_.size();
+    const int t = patch.triangle;
+    sourcePlanes_.push_back({vertPos_[halfedge_.Start(3 * t)], faceNormal_[t],
+                             std::max(epsilon_, planeTolerance)});
+    for (int v : patch.vertices) {
+      auto& ids = vertexSourcePlanes_[v];
+      if (std::find(ids.begin(), ids.end(), id) == ids.end()) ids.push_back(id);
+    }
+  }
+  // Keep the outline of a resolved patch distinct while the coarse coplanar
+  // groups are rebuilt. Otherwise a collapse can stay on its plane but eat
+  // across its boundary, replacing a large patch by sloping neighbour facets.
+  // These temporary face IDs are restored before the result is returned.
+  for (int t = 0; t < NumTri(); ++t) {
+    auto it = protectedFaces.find(key(t));
+    if (it != protectedFaces.end()) meshRelation_.triRef[t].faceID = it->second;
+  }
+  if (sourcePlanes_.empty()) vertexSourcePlanes_.clear();
+}
+
+bool Manifold::Impl::PlaneSafeCollapse(int from, int to) const {
+  if (vertexSourcePlanes_.empty()) return true;
+  for (int id : vertexSourcePlanes_[from]) {
+    const auto& p = sourcePlanes_[id];
+    if (std::abs(la::dot(p.normal, vertPos_[to] - p.origin)) > p.tolerance)
+      return false;
+  }
+  return true;
+}
+
+// A coarse 2D decimation projection must not create a proper 3D crossing.
+// Query all current faces geometrically, including nearby folds outside the
+// topological link. Changed faces are compared in their proposed state.
+bool Manifold::Impl::GeometricallyLegalChanges(
+    const std::vector<std::pair<int, ivec3>>& changes) {
+  struct Triangle {
+    vec3 p[3];
+    Box box;
+  };
+  auto triangle = [&](ivec3 vertices) {
+    Triangle t;
+    for (int j = 0; j < 3; ++j) {
+      t.p[j] = vertPos_[vertices[j]];
+      t.box.Union(t.p[j]);
+    }
+    return t;
+  };
+  auto currentTriangle = [&](int f) {
+    return triangle(ivec3(halfedge_.Start(3 * f), halfedge_.Start(3 * f + 1),
+                          halfedge_.Start(3 * f + 2)));
+  };
+  const double precision = SimplifyPrecision();
+  auto pierces = [&](vec3 p, vec3 q, const Triangle& t) {
+    const vec3 a = t.p[0], u = t.p[1] - a, v = t.p[2] - a, n = la::cross(u, v);
+    const double length = la::length(n);
+    if (length == 0) return false;
+    const double dp = la::dot(n, p - a) / length,
+                 dq = la::dot(n, q - a) / length;
+    if (!((dp > precision && dq < -precision) ||
+          (dq > precision && dp < -precision)))
+      return false;
+    const vec3 x = p + (dp / (dp - dq)) * (q - p);
+    for (int j = 0; j < 3; ++j) {
+      const vec3 e = t.p[(j + 1) % 3] - t.p[j];
+      if (la::dot(n, la::cross(e, x - t.p[j])) <
+          -precision * length * la::length(e))
+        return false;
+    }
+    return true;
+  };
+  auto crossing = [&](const Triangle& a, const Triangle& b) {
+    if (!a.box.DoesOverlap(b.box)) return false;
+    for (int j = 0; j < 3; ++j)
+      if (pierces(a.p[j], a.p[(j + 1) % 3], b) ||
+          pierces(b.p[j], b.p[(j + 1) % 3], a))
+        return true;
+    return false;
+  };
+  std::set<int> changed;
+  std::vector<Triangle> proposed;
+  for (const auto& item : changes) {
+    changed.insert(item.first);
+    // A repeated vertex denotes a triangle removed by the collapse.
+    const ivec3 v = item.second;
+    if (v[0] != v[1] && v[1] != v[2] && v[2] != v[0])
+      proposed.push_back(triangle(v));
+  }
+  for (size_t i = 0; i < proposed.size(); ++i) {
+    bool legal = true;
+    auto check = [&](int, int f) {
+      if (!legal || changed.count(f) || halfedge_.Start(3 * f) < 0) return;
+      if (crossing(proposed[i], currentTriangle(f))) legal = false;
+    };
+    auto recorder = MakeSimpleRecorder(check);
+    collider_.Collisions(
+        recorder, [&](int) { return proposed[i].box; }, 1, false);
+    // Topology cleanup may append degenerate/split faces after tree creation.
+    // Include every appended live face rather than silently omitting it.
+    for (int f = collider_.LeafCount(); legal && f < NumTri(); ++f) check(0, f);
+    if (!legal) return false;
+    for (size_t j = 0; j < i; ++j)
+      if (crossing(proposed[i], proposed[j])) return false;
+  }
+  return true;
+}
+
+void Manifold::Impl::UpdateSimplificationBounds(int face) {
+  Box box;
+  if (halfedge_.Start(3 * face) >= 0)
+    for (int j = 0; j < 3; ++j)
+      box.Union(vertPos_[halfedge_.Start(3 * face + j)]);
+  collider_.UpdateLeafBox(face, box);
+}
+
+void Manifold::Impl::InheritSourcePlanes(int from, int to) {
+  if (vertexSourcePlanes_.empty()) return;
+  auto& target = vertexSourcePlanes_[to];
+  for (int id : vertexSourcePlanes_[from])
+    if (std::find(target.begin(), target.end(), id) == target.end())
+      target.push_back(id);
+}
+
+bool Manifold::Impl::PlaneSafeSwap(int edge, bool commit) {
+  if (vertexSourcePlanes_.empty()) return true;
+  const int pair = halfedge_.Pair(edge);
+  const ivec3 a = TriOf(edge), b = TriOf(pair);
+  const int v[4] = {halfedge_.Start(a[0]), halfedge_.Start(a[1]),
+                    halfedge_.Start(a[2]), halfedge_.Start(b[2])};
+  std::vector<int> inherited;
+  for (int side = 0; side < 2; ++side) {
+    const int corners[3] = {side ? v[1] : v[0], side ? v[0] : v[1],
+                            v[2 + side]};
+    const vec3 x = vertPos_[corners[1]] - vertPos_[corners[0]],
+               y = vertPos_[corners[2]] - vertPos_[corners[0]];
+    const double longest =
+        std::max({la::length(x), la::length(y), la::length(x - y)});
+    // A genuinely sub-precision triangle carries no resolved plane area.
+    if (la::length(la::cross(x, y)) <= SimplifyPrecision() * longest) continue;
+    for (int id : vertexSourcePlanes_[corners[0]]) {
+      bool common = true;
+      for (int c : {corners[1], corners[2]}) {
+        const auto& ids = vertexSourcePlanes_[c];
+        common &= std::find(ids.begin(), ids.end(), id) != ids.end();
+      }
+      if (!common) continue;
+      const auto& p = sourcePlanes_[id];
+      const int opposite = side ? v[2] : v[3];
+      if (std::abs(la::dot(p.normal, vertPos_[opposite] - p.origin)) >
+          p.tolerance)
+        return false;
+      inherited.push_back(id);
+    }
+  }
+  if (commit)
+    for (int vertex : v)
+      for (int id : inherited) {
+        auto& ids = vertexSourcePlanes_[vertex];
+        if (std::find(ids.begin(), ids.end(), id) == ids.end())
+          ids.push_back(id);
+      }
+  return true;
+}
+
 /**
  * Collapses degenerate triangles by removing edges shorter than tolerance_ and
  * any edge that is preceeded by an edge that joins the same two face relations.
@@ -176,7 +394,7 @@ void Manifold::Impl::CollapseShortEdges(int firstNewVert) {
   // Boolean operation, we set firstNewVert in order to only operate on
   // newly-created verts, which means error stacking is not a concern, so we
   // allow collapsing up to tolerance in that case.
-  const double tol = firstNewVert == 0 ? epsilon_ : tolerance_;
+  const double tol = firstNewVert == 0 ? SimplifyPrecision() : tolerance_;
 
   auto shortEdge = [&](int edge) {
     const int pair = halfedge_.Pair(edge);
@@ -189,8 +407,10 @@ void Manifold::Impl::CollapseShortEdges(int firstNewVert) {
     const double lenSq = la::dot(delta, delta);
     // To ensure tolerance_-scale errors don't stack, only collapse these edges
     // if they connect a new vert to an old vert, since old verts are only
-    // allowed to move by epsilon_.
-    const double maxLen = end < firstNewVert ? tol * tol : epsilon_ * epsilon_;
+    // allowed to move by SimplifyPrecision().
+    const double maxLen = end < firstNewVert
+                              ? tol * tol
+                              : SimplifyPrecision() * SimplifyPrecision();
     return lenSq < maxLen;
   };
 
@@ -335,6 +555,8 @@ void Manifold::Impl::DedupeEdge(const int edge) {
       // Single topological unit needs 2 faces added to be split
       const int newVert = vertPos_.size();
       vertPos_.push_back(vertPos_[endVert]);
+      if (!vertexSourcePlanes_.empty())
+        vertexSourcePlanes_.push_back(vertexSourcePlanes_[endVert]);
       if (vertNormal_.size() > 0) vertNormal_.push_back(vertNormal_[endVert]);
       current = halfedge_.Pair(NextHalfedge(current));
       const int opposite = halfedge_.Pair(nextEdge);
@@ -376,6 +598,8 @@ void Manifold::Impl::DedupeEdge(const int edge) {
     // Separate topological unit needs no new faces to be split
     const int newVert = vertPos_.size();
     vertPos_.push_back(vertPos_[endVert]);
+    if (!vertexSourcePlanes_.empty())
+      vertexSourcePlanes_.push_back(vertexSourcePlanes_[endVert]);
     if (vertNormal_.size() > 0) vertNormal_.push_back(vertNormal_[endVert]);
 
     ForVert(NextHalfedge(current), [this, newVert](int e) {
@@ -399,6 +623,8 @@ void Manifold::Impl::DedupeEdge(const int edge) {
     // Split the pinched vert the previous split created.
     const int newVert = vertPos_.size();
     vertPos_.push_back(vertPos_[endVert]);
+    if (!vertexSourcePlanes_.empty())
+      vertexSourcePlanes_.push_back(vertexSourcePlanes_[endVert]);
     if (vertNormal_.size() > 0) vertNormal_.push_back(vertNormal_[endVert]);
 
     ForVert(NextHalfedge(current), [this, newVert](int e) {
@@ -433,8 +659,13 @@ void Manifold::Impl::UpdateVert(int vert, int startEdge, int endEdge) {
 void Manifold::Impl::FormLoop(int current, int end) {
   int startVert = vertPos_.size();
   vertPos_.push_back(vertPos_[halfedge_.Start(current)]);
+  if (!vertexSourcePlanes_.empty())
+    vertexSourcePlanes_.push_back(
+        vertexSourcePlanes_[halfedge_.Start(current)]);
   int endVert = vertPos_.size();
   vertPos_.push_back(vertPos_[halfedge_.End(current)]);
+  if (!vertexSourcePlanes_.empty())
+    vertexSourcePlanes_.push_back(vertexSourcePlanes_[halfedge_.End(current)]);
 
   int oldMatch = halfedge_.Pair(current);
   int newMatch = halfedge_.Pair(end);
@@ -492,7 +723,7 @@ void Manifold::Impl::RemoveIfFolded(int edge) {
 bool Manifold::Impl::CollapseEdge(const int edge, Vec<int>& edges, double tol,
                                   int firstNewVert) {
   Vec<TriRef>& triRef = meshRelation_.triRef;
-  if (tol < 0) tol = epsilon_;
+  if (tol < 0) tol = SimplifyPrecision();
 
   const int pair = halfedge_.Pair(edge);
   if (pair < 0) return false;
@@ -505,12 +736,14 @@ bool Manifold::Impl::CollapseEdge(const int edge, Vec<int>& edges, double tol,
   const vec3 pNew = vertPos_[endVert];
   const vec3 pOld = vertPos_[startVert];
   const vec3 delta = pNew - pOld;
+  if (!PlaneSafeCollapse(startVert, endVert)) return false;
   // We don't check that startVert is still new here - it may have been
   // collapsed to a different neighbor. However, it's still fine to collapse it
   // further, as it's still only collapsing its own original neighbors together,
   // which can't stack errors arbitrarily far.
-  const double maxLen =
-      endVert < firstNewVert ? tol * tol : epsilon_ * epsilon_;
+  const double maxLen = endVert < firstNewVert
+                            ? tol * tol
+                            : SimplifyPrecision() * SimplifyPrecision();
   const bool shortEdge = la::dot(delta, delta) < maxLen;
 
   // Orbit startVert
@@ -547,7 +780,7 @@ bool Manifold::Impl::CollapseEdge(const int edge, Vec<int>& edges, double tol,
 
       // Don't collapse edge if it would cause a triangle to invert.
       if (CCW(projection * pNext, projection * pLast, projection * pNew,
-              epsilon_) < 0)
+              SimplifyPrecision()) < 0)
         return false;
 
       pLast = pNext;
@@ -565,6 +798,19 @@ bool Manifold::Impl::CollapseEdge(const int edge, Vec<int>& edges, double tol,
     }
   }
 
+  std::vector<std::pair<int, ivec3>> changes;
+  if (!sourcePlanes_.empty()) {
+    ForVert(edge, [&](int e) {
+      ivec3 v;
+      for (int j = 0; j < 3; ++j) {
+        v[j] = halfedge_.Start(3 * (e / 3) + j);
+        if (v[j] == startVert) v[j] = endVert;
+      }
+      changes.push_back({e / 3, v});
+    });
+    if (!GeometricallyLegalChanges(changes)) return false;
+  }
+  InheritSourcePlanes(startVert, endVert);
   // Remove toRemove.startVert and replace with endVert.
   vertPos_[startVert] = vec3(NAN);
   CollapseTri(tri1edge);
@@ -602,6 +848,7 @@ bool Manifold::Impl::CollapseEdge(const int edge, Vec<int>& edges, double tol,
   UpdateVert(endVert, start, tri0edge[2]);
   CollapseTri(tri0edge);
   RemoveIfFolded(start);
+  for (const auto& item : changes) UpdateSimplificationBounds(item.first);
   return true;
 }
 
@@ -620,6 +867,16 @@ void Manifold::Impl::RecursiveEdgeSwap(const int edge, int& tag,
 
   const ivec3 tri0edge = TriOf(edge);
   const ivec3 tri1edge = TriOf(pair);
+  if (!PlaneSafeSwap(edge)) return;
+  if (!sourcePlanes_.empty() &&
+      !GeometricallyLegalChanges(
+          {{edge / 3,
+            ivec3(halfedge_.Start(tri1edge[2]), halfedge_.Start(tri0edge[1]),
+                  halfedge_.Start(tri0edge[2]))},
+           {pair / 3,
+            ivec3(halfedge_.Start(tri0edge[2]), halfedge_.Start(tri1edge[1]),
+                  halfedge_.Start(tri1edge[2]))}}))
+    return;
 
   mat2x3 projection = GetAxisAlignedProjection(faceNormal_[edge / 3]);
   vec2 v[4];
@@ -636,6 +893,7 @@ void Manifold::Impl::RecursiveEdgeSwap(const int edge, int& tag,
   v[3] = projection * vertPos_[halfedge_.Start(tri1edge[2])];
 
   auto SwapEdge = [&]() {
+    PlaneSafeSwap(edge, true);
     // The 0-verts are swapped to the opposite 2-verts.
     const int v0 = halfedge_.Start(tri0edge[2]);
     const int v1 = halfedge_.Start(tri1edge[2]);
@@ -643,6 +901,10 @@ void Manifold::Impl::RecursiveEdgeSwap(const int edge, int& tag,
     halfedge_.SetEnd(tri0edge[2], v1);
     halfedge_.SetStart(tri1edge[0], v0);
     halfedge_.SetEnd(tri1edge[2], v0);
+    if (!sourcePlanes_.empty()) {
+      UpdateSimplificationBounds(edge / 3);
+      UpdateSimplificationBounds(pair / 3);
+    }
     PairUp(tri0edge[0], halfedge_.Pair(tri1edge[2]));
     PairUp(tri1edge[0], halfedge_.Pair(tri0edge[2]));
     PairUp(tri0edge[2], tri1edge[2]);
@@ -787,6 +1049,8 @@ void Manifold::Impl::SplitPinchedVerts() {
         continue;
       }
       vertPos_.push_back(vertPos_[startVert]);
+      if (!vertexSourcePlanes_.empty())
+        vertexSourcePlanes_.push_back(vertexSourcePlanes_[startVert]);
       const int vert = NumVert() - 1;
       ForVert(i, [this, vert](int current) {
         halfedge_.SetStart(current, vert);
@@ -804,6 +1068,8 @@ void Manifold::Impl::SplitPinchedVerts() {
       if (vert == -1) continue;
       if (vertProcessed[vert]) {
         vertPos_.push_back(vertPos_[vert]);
+        if (!vertexSourcePlanes_.empty())
+          vertexSourcePlanes_.push_back(vertexSourcePlanes_[vert]);
         vert = NumVert() - 1;
         ForVert(i, [this, &halfedgeProcessed, vert](int current) {
           halfedgeProcessed[current] = true;

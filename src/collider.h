@@ -282,6 +282,25 @@ class Collider {
     UpdateBoxes(leafBB);
   }
 
+  size_t LeafCount() const { return NumLeaves(); }
+
+  // Sequential decimation changes only a few triangles at a time. Refit
+  // their ancestor paths without rebuilding or weakening the broad phase.
+  void UpdateLeafBox(size_t leaf, const Box& box) {
+    if (leaf >= NumLeaves()) return;
+    nodeBBox_.MakeUnique();
+    int node = collider_internal::Leaf2Node(leaf);
+    nodeBBox_[node] = box;
+    if (internalChildren_.empty()) return;
+    do {
+      node = nodeParent_[node];
+      const auto children =
+          internalChildren_[collider_internal::Node2Internal(node)];
+      nodeBBox_[node] =
+          nodeBBox_[children.first].Union(nodeBBox_[children.second]);
+    } while (node != collider_internal::kRoot);
+  }
+
   Box GetBoundingBox() const {
     if (nodeBBox_.empty()) return Box();
     return nodeBBox_[collider_internal::Internal2Node(0)];

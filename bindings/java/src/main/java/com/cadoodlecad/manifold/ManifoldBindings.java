@@ -284,6 +284,8 @@ public class ManifoldBindings {
 				ValueLayout.JAVA_DOUBLE);
 		load("manifold_simplify", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
 				ValueLayout.JAVA_DOUBLE);
+		load("manifold_simplify_preserving_planes", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+				ValueLayout.JAVA_DOUBLE);
 		// ManifoldManifold* manifold_smooth_by_normals(void* mem, ManifoldManifold* m,
 		// int normal_idx);
 		load("manifold_smooth_by_normals", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
@@ -1250,6 +1252,12 @@ public class ManifoldBindings {
 	public MemorySegment simplify(MemorySegment m, double tolerance) throws Throwable {
 		MemorySegment mem = (MemorySegment) functions.get("manifold_alloc_manifold").invoke();
 		return (MemorySegment) functions.get("manifold_simplify").invoke(mem, m, tolerance);
+	}
+
+	/** Simplify without bending resolved source planar regions. */
+	public MemorySegment simplifyPreservingPlanes(MemorySegment m, double tolerance) throws Throwable {
+		MemorySegment mem = (MemorySegment) functions.get("manifold_alloc_manifold").invoke();
+		return (MemorySegment) functions.get("manifold_simplify_preserving_planes").invoke(mem, m, tolerance);
 	}
 
 	public MemorySegment smoothByNormals(MemorySegment m, int normalIdx) throws Throwable {
